@@ -1443,17 +1443,19 @@ export function renderServicePage(
             let body;
             try { body = await response.json(); } catch { body = await response.text(); }
 
+            const ctx = JSON.stringify({ method, path: finalUrl || (baseUrl + path), fetchOpts, body });
             resultEl.innerHTML =
               '<div class="try-status status-402">&#9888; 402 Payment Required</div>' +
               '<pre>' + escapeHtmlClient(JSON.stringify(body, null, 2)) + '</pre>' +
               '<div style="margin-top: 16px;">' +
-              '<button class="try-btn" onclick="payWithFreighter(this, ' + escapeHtmlClient(JSON.stringify(JSON.stringify({
-                method, path: finalUrl || (baseUrl + path), fetchOpts, body
-              }))) + ')">' +
+              '<button class="try-btn pay-freighter-btn">' +
               '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
               'Pay with Freighter' +
               '</button>' +
               '</div>';
+            const payBtn = resultEl.querySelector('.pay-freighter-btn');
+            payBtn.__x402ctx = ctx;
+            payBtn.addEventListener('click', function() { payWithFreighter(this, this.__x402ctx); });
           } else {
             const body = await response.json().catch(() => response.text());
             resultEl.innerHTML =
@@ -1709,17 +1711,19 @@ export function renderDocsPage(catalog: PlatformCatalog) {
             let body;
             try { body = await response.json(); } catch { body = await response.text(); }
 
+            const ctx = JSON.stringify({ method, path: finalUrl, fetchOpts, body });
             resultEl.innerHTML =
               '<div class="try-status status-402">&#9888; 402 Payment Required</div>' +
               '<pre>' + escapeHtmlClient(JSON.stringify(body, null, 2)) + '</pre>' +
               '<div style="margin-top: 16px;">' +
-              '<button class="try-btn" onclick="payWithFreighter(this, ' + escapeHtmlClient(JSON.stringify(JSON.stringify({
-                method, path: finalUrl, fetchOpts, body
-              }))) + ')">' +
+              '<button class="try-btn pay-freighter-btn">' +
               '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
               'Pay with Freighter' +
               '</button>' +
               '</div>';
+            const payBtn = resultEl.querySelector('.pay-freighter-btn');
+            payBtn.__x402ctx = ctx;
+            payBtn.addEventListener('click', function() { payWithFreighter(this, this.__x402ctx); });
           } else {
             const body = await response.json().catch(() => response.text());
             resultEl.innerHTML =
