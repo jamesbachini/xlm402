@@ -20,11 +20,11 @@ export async function createApp() {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "https://esm.sh"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "https://esm.sh", "https://cdn.jsdelivr.net"],
           scriptSrcAttr: ["'unsafe-inline'"],
           styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
           fontSrc: ["'self'", "https://fonts.gstatic.com"],
-          connectSrc: ["'self'", config.publicBaseUrl, "https://esm.sh"],
+          connectSrc: ["'self'", config.publicBaseUrl, "https://esm.sh", "https://horizon.stellar.org", "https://soroban-rpc.mainnet.stellar.gateway.fm", "https://horizon-testnet.stellar.org", "https://soroban-testnet.stellar.org"],
           imgSrc: ["'self'", "data:"],
         },
       },
