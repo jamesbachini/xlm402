@@ -135,3 +135,27 @@ curl -X POST "http://localhost:3000/image/generate" \
 - Chat and image routes are published only when `OPENAI_API_KEY` is configured.
 - `/.well-known/x402` lists route-specific payment metadata for discovery clients.
 - The HTML overview and docs pages are rendered from the same shared catalog as the payment middleware.
+
+## Deployment
+```bash
+git clone https://github.com/jamesbachini/xlm402
+ln -s ../sites-available/xlm402.com ./xlm402.com
+sudo ln -s ../sites-available/xlm402.com ./xlm402.com
+nano .env
+sudo npm install -g typescript
+sudo npm install -g pm2
+npm install  @types/node
+npm run build
+pm2 start dist/index.js --name xlm402
+pm2 save
+pm2 startup
+sudo env PATH=$PATH:/usr/bin /usr/local/lib/node_modules/pm2/bin/pm2 startup systemd -u james --hp /home/james
+sudo systemctl restart nginx
+pm2 logs xlm402
+pm2 restart xlm402
+git pull origin main
+pm2 restart xlm402
+```
+
+## License
+MIT
