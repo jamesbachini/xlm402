@@ -1480,18 +1480,17 @@ export function renderServicePage(
         try {
           const freighter = await import('https://esm.sh/@stellar/freighter-api@6');
 
-          const connResult = await freighter.isConnected();
-          if (!connResult.isConnected) {
-            throw new Error('Freighter wallet not detected or not connected. Please install Freighter from freighter.app, unlock it, and refresh.');
-          }
-
           btn.textContent = 'Requesting access...';
-          const accessResult = await freighter.requestAccess();
-          if (accessResult.error) {
-            throw new Error('Freighter access denied: ' + accessResult.error);
+          let publicKey;
+          try {
+            const accessResult = await freighter.requestAccess();
+            if (accessResult.error) {
+              throw new Error(accessResult.error);
+            }
+            publicKey = accessResult.address;
+          } catch (accessErr) {
+            throw new Error('Could not connect to Freighter. Make sure the extension is installed from freighter.app, unlocked, and try again. (' + (accessErr.message || accessErr) + ')');
           }
-
-          const publicKey = accessResult.address;
           if (!publicKey) throw new Error('Could not retrieve public key from Freighter.');
 
           btn.textContent = 'Preparing payment...';
