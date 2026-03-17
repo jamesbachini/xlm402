@@ -6,7 +6,7 @@ import { config } from "../config.js";
 import { buildPlatformCatalog } from "../platform/catalog.js";
 import { usdToXlm } from "../services/xlmPrice.js";
 
-export function createX402Middleware() {
+export async function createX402Middleware() {
   const mainnet = config.networks.mainnet;
   const testnet = config.networks.testnet;
 
@@ -29,6 +29,20 @@ export function createX402Middleware() {
           : undefined,
       }),
   );
+
+  // Probe facilitators at startup to log what they support
+  for (const [i, client] of facilitatorClients.entries()) {
+    const label = i === 0 ? "mainnet" : "testnet";
+    try {
+      const supported = await client.getSupported();
+      const kinds = (supported.kinds as Array<{ scheme: string; network: string }>).map(
+        (k) => `${k.scheme}@${k.network}`,
+      );
+      console.log(`[x402] ${label} facilitator (${[mainnet, testnet][i].facilitatorUrl}) supports: ${kinds.join(", ")}`);
+    } catch (err) {
+      console.error(`[x402] ${label} facilitator (${[mainnet, testnet][i].facilitatorUrl}) unreachable: ${String(err)}`);
+    }
+  }
 
   const catalog = buildPlatformCatalog();
   const routes = Object.fromEntries(
