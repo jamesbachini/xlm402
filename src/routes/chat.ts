@@ -13,7 +13,8 @@ export function createChatRouter() {
     res.json({
       network: "mainnet",
       paid: true,
-      price_usdc: config.prices.chat,
+      price_usd: config.prices.chat,
+      assets: ["USDC", "XLM"],
       data,
     });
   });

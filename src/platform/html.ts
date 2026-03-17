@@ -1121,7 +1121,7 @@ function renderServiceCard(service: ServiceDefinition, catalog: PlatformCatalog)
     (ep) => ep.serviceId === service.id,
   );
   const networks = Array.from(new Set(endpoints.map((ep) => ep.network)));
-  const prices = Array.from(new Set(endpoints.map((ep) => ep.priceUsdc)));
+  const prices = Array.from(new Set(endpoints.map((ep) => ep.priceUsd)));
   const accent = serviceAccentColor(service.id);
 
   return `
@@ -1135,7 +1135,7 @@ function renderServiceCard(service: ServiceDefinition, catalog: PlatformCatalog)
       <p class="service-card-desc">${escapeHtml(service.tagline)}</p>
       <div class="service-card-meta">
         ${networks.map((n) => `<span class="tag tag-network">${escapeHtml(n)}</span>`).join("")}
-        ${prices.map((p) => `<span class="tag tag-price">from $${escapeHtml(p)}</span>`).join("")}
+        ${prices.map((p) => `<span class="tag tag-price">from $${escapeHtml(p)} USD</span>`).join("")}
         <span class="tag">${endpoints.length} endpoint${endpoints.length === 1 ? "" : "s"}</span>
       </div>
       <div class="service-card-arrow">
@@ -1164,7 +1164,7 @@ export function renderIndexPage(catalog: PlatformCatalog) {
           </div>
           <h1>The <span class="gradient-text">x402 service catalogue</span> for Stellar</h1>
           <p class="hero-subtitle">
-            Browse premium APIs, pay with USDC on Stellar, and get instant access.
+            Browse premium APIs, pay with USDC or XLM on Stellar, and get instant access.
             Built for developers, AI agents, and automated workflows.
           </p>
           <div class="hero-actions">
@@ -1187,8 +1187,8 @@ export function renderIndexPage(catalog: PlatformCatalog) {
             <div class="stat-label">Networks</div>
           </div>
           <div class="stat">
-            <div class="stat-value">USDC</div>
-            <div class="stat-label">Payment Asset</div>
+            <div class="stat-value">USDC or XLM</div>
+            <div class="stat-label">Payment Assets</div>
           </div>
         </div>
 
@@ -1219,7 +1219,7 @@ export function renderIndexPage(catalog: PlatformCatalog) {
             <div class="how-step">
               <div class="how-step-number">2</div>
               <h4>Sign with Freighter</h4>
-              <p>Your wallet creates a USDC payment on Stellar. The signed transaction is attached to the retry request.</p>
+              <p>Your wallet creates a USDC or XLM payment on Stellar. The signed transaction is attached to the retry request.</p>
             </div>
             <div class="how-step">
               <div class="how-step-number">3</div>
@@ -1281,7 +1281,7 @@ function renderEndpointDetail(endpoint: PublishedEndpoint, baseUrl: string) {
         </div>
         <div class="endpoint-card-right">
           <span class="tag tag-network">${escapeHtml(endpoint.network)}</span>
-          <span class="tag tag-price">$${escapeHtml(endpoint.priceUsdc)} USDC</span>
+          <span class="tag tag-price">$${escapeHtml(endpoint.priceUsd)} USD</span>
           <div class="endpoint-expand">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
           </div>

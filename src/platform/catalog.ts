@@ -32,7 +32,7 @@ export type PublishedEndpoint = ServiceEndpoint & {
   fullPath: string;
   network: NetworkLabel;
   networkConfig: PaymentNetworkConfig;
-  priceUsdc: string;
+  priceUsd: string;
 };
 
 export type PlatformCatalog = {
@@ -237,8 +237,8 @@ export function buildPlatformCatalog(): PlatformCatalog {
         continue;
       }
 
-      const priceUsdc = endpoint.priceByNetwork[network];
-      if (!priceUsdc) {
+      const priceUsd = endpoint.priceByNetwork[network];
+      if (!priceUsd) {
         continue;
       }
 
@@ -247,7 +247,7 @@ export function buildPlatformCatalog(): PlatformCatalog {
         fullPath: `${networkConfig.routePrefix}${endpoint.route}`,
         network,
         networkConfig,
-        priceUsdc,
+        priceUsd,
       });
     }
   }

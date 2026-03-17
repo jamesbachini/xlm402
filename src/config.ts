@@ -11,6 +11,7 @@ export type PaymentNetworkConfig = {
   payToAddress: string;
   facilitatorUrl: string;
   facilitatorApiKey?: string;
+  xlmContractAddress?: string;
 };
 
 type ServicePricing = Record<ServiceId, string>;
@@ -31,9 +32,11 @@ type Config = {
   publicBaseUrl: string;
   requestTimeoutMs: number;
   cacheTtlSeconds: number;
+  xlmPriceTtlSeconds: number;
   openMeteoBaseUrl: string;
   openMeteoArchiveBaseUrl: string;
   logPayments: boolean;
+  xlmEnabled: boolean;
   prices: ServicePricing;
   networks: Record<NetworkLabel, PaymentNetworkConfig>;
   openai: OpenAIConfig;
@@ -101,6 +104,7 @@ function readNetworkConfig(
     payToAddress: requireEnv(`${prefix}_PAY_TO_ADDRESS`),
     facilitatorUrl: parseUrl(`${prefix}_FACILITATOR_URL`),
     facilitatorApiKey: optionalEnv(`${prefix}_FACILITATOR_API_KEY`),
+    xlmContractAddress: optionalEnv(`${prefix}_XLM_CONTRACT_ADDRESS`),
   };
 }
 
@@ -113,12 +117,16 @@ export const config: Config = {
   publicBaseUrl: parseUrl("PUBLIC_BASE_URL", "https://xlm402.com"),
   requestTimeoutMs: parseInteger("REQUEST_TIMEOUT_MS", 8000),
   cacheTtlSeconds: parseInteger("CACHE_TTL_SECONDS", 60),
+  xlmPriceTtlSeconds: parseInteger("XLM_PRICE_TTL_SECONDS", 30),
   openMeteoBaseUrl: parseUrl("OPEN_METEO_BASE_URL", "https://api.open-meteo.com"),
   openMeteoArchiveBaseUrl: parseUrl(
     "OPEN_METEO_ARCHIVE_BASE_URL",
     "https://archive-api.open-meteo.com",
   ),
   logPayments: process.env.LOG_PAYMENTS?.trim().toLowerCase() === "true",
+  xlmEnabled: Boolean(
+    optionalEnv("MAINNET_XLM_CONTRACT_ADDRESS") || optionalEnv("TESTNET_XLM_CONTRACT_ADDRESS"),
+  ),
   prices: {
     weather: parsePrice("WEATHER_PRICE_USDC", "0.01"),
     chat: parsePrice("CHAT_PRICE_USDC", "0.05"),

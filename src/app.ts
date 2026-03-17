@@ -45,14 +45,14 @@ export function createApp() {
     "/weather",
     createWeatherRouter({
       network: "mainnet",
-      priceUsdc: config.prices.weather,
+      priceUsd: config.prices.weather,
     }),
   );
   app.use(
     "/testnet/weather",
     createWeatherRouter({
       network: "testnet",
-      priceUsdc: config.prices.weather,
+      priceUsd: config.prices.weather,
     }),
   );
 

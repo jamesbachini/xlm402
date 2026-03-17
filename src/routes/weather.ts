@@ -22,21 +22,22 @@ type ArchiveDailyResponse = {
   precipitation_sum: number[];
 };
 
-function wrapPaidResponse(data: unknown, network: NetworkLabel, priceUsdc: string) {
+function wrapPaidResponse(data: unknown, network: NetworkLabel, priceUsd: string) {
   return {
     network,
     paid: true,
-    price_usdc: priceUsdc,
+    price_usd: priceUsd,
+    assets: ["USDC", "XLM"],
     data,
   };
 }
 
 export function createWeatherRouter({
   network,
-  priceUsdc,
+  priceUsd,
 }: {
   network: NetworkLabel;
-  priceUsdc: string;
+  priceUsd: string;
 }) {
   const router = Router();
 
@@ -50,7 +51,7 @@ export function createWeatherRouter({
       timezone,
     });
 
-    res.json(wrapPaidResponse(data, network, priceUsdc));
+    res.json(wrapPaidResponse(data, network, priceUsd));
   });
 
   router.get("/forecast", async (req, res) => {
@@ -75,7 +76,7 @@ export function createWeatherRouter({
       forecastDays,
     });
 
-    res.json(wrapPaidResponse(data, network, priceUsdc));
+    res.json(wrapPaidResponse(data, network, priceUsd));
   });
 
   router.get("/archive", async (req, res) => {
@@ -100,7 +101,7 @@ export function createWeatherRouter({
       daily,
     });
 
-    res.json(wrapPaidResponse(data, network, priceUsdc));
+    res.json(wrapPaidResponse(data, network, priceUsd));
   });
 
   router.get("/history-summary", async (req, res) => {
@@ -137,7 +138,7 @@ export function createWeatherRouter({
           summary: buildHistorySummary(archive.daily),
         },
         network,
-        priceUsdc,
+        priceUsd,
       ),
     );
   });

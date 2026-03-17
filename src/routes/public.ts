@@ -35,6 +35,7 @@ publicRouter.get("/health", (_req, res) => {
     services: catalog.services.map((service) => service.id),
     published_routes: catalog.publishedEndpoints.length,
     networks: Object.keys(config.networks),
+    payment_assets: config.xlmEnabled ? ["USDC", "XLM"] : ["USDC"],
     openai_enabled: config.openai.enabled,
   });
 });
@@ -65,6 +66,7 @@ publicRouter.get("/api/catalog", (_req, res) => {
   res.json({
     service: config.platformName,
     public_base_url: config.publicBaseUrl,
+    payment_assets: config.xlmEnabled ? ["USDC", "XLM"] : ["USDC"],
     openai_enabled: config.openai.enabled,
     services: catalog.services,
     endpoints: catalog.publishedEndpoints.map((endpoint) => ({
@@ -73,7 +75,10 @@ publicRouter.get("/api/catalog", (_req, res) => {
       method: endpoint.method,
       path: endpoint.fullPath,
       network: endpoint.network,
-      price_usdc: endpoint.priceUsdc,
+      price_usd: endpoint.priceUsd,
+      payment_assets: endpoint.networkConfig.xlmContractAddress
+        ? ["USDC", "XLM"]
+        : ["USDC"],
       response_type: endpoint.responseType,
       description: endpoint.description,
     })),
@@ -86,21 +91,39 @@ publicRouter.get("/.well-known/x402", (_req, res) => {
   res.json({
     version: 1,
     service: config.platformName,
-    resources: catalog.publishedEndpoints.map((endpoint) => ({
-      id: endpoint.id,
-      service: endpoint.serviceId,
-      method: endpoint.method,
-      path: endpoint.fullPath,
-      description: endpoint.description,
-      payment: {
-        protocol: "x402",
-        scheme: "exact",
-        network: endpoint.networkConfig.stellarNetwork,
-        asset: "USDC",
-        price_usdc: endpoint.priceUsdc,
-        pay_to: endpoint.networkConfig.payToAddress,
-        facilitator_url: endpoint.networkConfig.facilitatorUrl,
-      },
-    })),
+    resources: catalog.publishedEndpoints.map((endpoint) => {
+      const payments = [
+        {
+          protocol: "x402",
+          scheme: "exact",
+          network: endpoint.networkConfig.stellarNetwork,
+          asset: "USDC",
+          price_usd: endpoint.priceUsd,
+          pay_to: endpoint.networkConfig.payToAddress,
+          facilitator_url: endpoint.networkConfig.facilitatorUrl,
+        },
+      ];
+
+      if (endpoint.networkConfig.xlmContractAddress) {
+        payments.push({
+          protocol: "x402",
+          scheme: "exact",
+          network: endpoint.networkConfig.stellarNetwork,
+          asset: "XLM",
+          price_usd: endpoint.priceUsd,
+          pay_to: endpoint.networkConfig.payToAddress,
+          facilitator_url: endpoint.networkConfig.facilitatorUrl,
+        });
+      }
+
+      return {
+        id: endpoint.id,
+        service: endpoint.serviceId,
+        method: endpoint.method,
+        path: endpoint.fullPath,
+        description: endpoint.description,
+        payments,
+      };
+    }),
   });
 });

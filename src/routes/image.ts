@@ -13,7 +13,8 @@ export function createImageRouter() {
     res.json({
       network: "mainnet",
       paid: true,
-      price_usdc: config.prices.image,
+      price_usd: config.prices.image,
+      assets: ["USDC", "XLM"],
       data,
     });
   });
