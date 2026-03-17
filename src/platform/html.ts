@@ -1050,16 +1050,6 @@ a { color: inherit; text-decoration: none; }
 }
 `;
 
-const browserImportMap = JSON.stringify({
-  imports: {
-    "https://esm.sh/@stellar/stellar-sdk@^14.6.1?target=es2022": "/vendor/stellar-sdk-shim.mjs",
-  },
-});
-
-function renderBrowserImportMap() {
-  return `<script type="importmap">${browserImportMap}</script>`;
-}
-
 function renderNav(activePage: string) {
   return `
     <nav class="nav">
@@ -1116,8 +1106,7 @@ function layout({
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-    ${renderBrowserImportMap()}
-    <script src="https://cdn.jsdelivr.net/gh/jamesbachini/Stellar-Wallets-Kit-Boilerplate@main/vanilla/stellar-kit-bundle/dist/wallet-kit-bundle.umd.js"></script>
+    <script type="module" src="/vendor/freighter-x402.js"></script>
     <style>${sharedStyles}</style>
   </head>
   <body>
@@ -1338,37 +1327,10 @@ function renderEndpointDetail(endpoint: PublishedEndpoint, baseUrl: string) {
 function renderCatalogueClientScript() {
   return `
       <script>
-      const X402_CORE_CLIENT_URL = ${JSON.stringify("https://esm.sh/@x402/core@2.7.0/client?bundle")};
-      const X402_STELLAR_CLIENT_URL = ${JSON.stringify("https://esm.sh/@x402/stellar@2.7.0/exact/client?bundle")};
       const STELLAR_RPC_URLS = {
         'stellar:pubnet': ${JSON.stringify(config.stellarRpcUrls.mainnet)},
         'stellar:testnet': ${JSON.stringify(config.stellarRpcUrls.testnet)},
       };
-
-      let walletKitReady = false;
-      let x402BrowserDepsPromise = null;
-
-      function ensureWalletKit() {
-        if (walletKitReady) return;
-        if (!window.MyWalletKit) throw new Error('Wallet kit failed to load. Please refresh the page.');
-        const { StellarWalletsKit, SwkAppDarkTheme, defaultModules } = window.MyWalletKit;
-        StellarWalletsKit.init({ theme: SwkAppDarkTheme, modules: defaultModules() });
-        walletKitReady = true;
-      }
-
-      function getNetworkPassphrase(network) {
-        if (network === 'stellar:testnet') return 'Test SDF Network ; September 2015';
-        if (network === 'stellar:pubnet') return 'Public Global Stellar Network ; September 2015';
-        throw new Error('Unsupported Stellar network: ' + network);
-      }
-
-      function getSorobanRpcUrl(network) {
-        const rpcUrl = STELLAR_RPC_URLS[network];
-        if (!rpcUrl) {
-          throw new Error('No Soroban RPC URL configured for ' + network + '.');
-        }
-        return rpcUrl;
-      }
 
       function normalizeHeaders(headers) {
         const result = {};
@@ -1406,75 +1368,6 @@ function renderCatalogueClientScript() {
             escapeHtmlClient(String(message)) +
           '</p>',
         );
-      }
-
-      async function loadX402BrowserDeps() {
-        if (!x402BrowserDepsPromise) {
-          x402BrowserDepsPromise = Promise.all([
-            import(X402_CORE_CLIENT_URL),
-            import(X402_STELLAR_CLIENT_URL),
-          ]).then(([core, stellar]) => ({ core, stellar }));
-        }
-        return x402BrowserDepsPromise;
-      }
-
-      async function connectFreighter(network) {
-        ensureWalletKit();
-        const { StellarWalletsKit } = window.MyWalletKit;
-        StellarWalletsKit.setWallet('freighter');
-
-        try {
-          const existing = await StellarWalletsKit.getAddress();
-          if (existing && existing.address) {
-            return existing.address;
-          }
-        } catch (_err) {
-          // Fall through to the wallet modal.
-        }
-
-        StellarWalletsKit.setNetwork(getNetworkPassphrase(network));
-        const connected = await StellarWalletsKit.authModal();
-        if (connected && connected.address) {
-          return connected.address;
-        }
-
-        throw new Error('Freighter connection was cancelled.');
-      }
-
-      async function createStellarHttpClient(address, network) {
-        ensureWalletKit();
-        const { StellarWalletsKit } = window.MyWalletKit;
-        const deps = await loadX402BrowserDeps();
-        const { x402Client, x402HTTPClient } = deps.core;
-        const { ExactStellarScheme } = deps.stellar;
-        const networkPassphrase = getNetworkPassphrase(network);
-
-        const signer = {
-          address,
-          signAuthEntry(authEntryXdr, options) {
-            return StellarWalletsKit.signAuthEntry(authEntryXdr, {
-              address,
-              networkPassphrase: options && options.networkPassphrase
-                ? options.networkPassphrase
-                : networkPassphrase,
-            });
-          },
-          signTransaction(transactionXdr, options) {
-            return StellarWalletsKit.signTransaction(transactionXdr, {
-              address,
-              networkPassphrase: options && options.networkPassphrase
-                ? options.networkPassphrase
-                : networkPassphrase,
-            });
-          },
-        };
-
-        const coreClient = new x402Client().register(
-          'stellar:*',
-          new ExactStellarScheme(signer, { url: getSorobanRpcUrl(network) }),
-        );
-
-        return new x402HTTPClient(coreClient);
       }
 
       function findStellarRequirement(paymentRequired) {
@@ -1603,13 +1496,20 @@ function renderCatalogueClientScript() {
           }
 
           btn.textContent = 'Connecting Freighter...';
-          const address = await connectFreighter(stellarRequirement.network);
+          if (!window.X402Freighter || typeof window.X402Freighter.connectAndCreateHttpClient !== 'function') {
+            throw new Error('Freighter payment client failed to load. Please refresh the page.');
+          }
+
+          const { address, httpClient } = await window.X402Freighter.connectAndCreateHttpClient({
+            network: stellarRequirement.network,
+            rpcUrls: STELLAR_RPC_URLS,
+          });
+
           if (!address) {
             throw new Error('No wallet address was returned from Freighter.');
           }
 
           btn.textContent = 'Building x402 payment...';
-          const httpClient = await createStellarHttpClient(address, stellarRequirement.network);
           const paymentPayload = await httpClient.createPaymentPayload(paymentRequired);
           const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
 

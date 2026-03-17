@@ -233,12 +233,14 @@ after(async () => {
   await context.close();
 });
 
-test("catalogue HTML uses the v2 payment flow and wallet auth modal", () => {
+test("catalogue HTML uses the v2 payment flow and bundled Freighter client", () => {
   const html = context.renderDocsPage(context.buildPlatformCatalog());
 
-  assert.match(html, /authModal\(/);
+  assert.match(html, /\/vendor\/freighter-x402\.js/);
   assert.match(html, /PAYMENT-REQUIRED/);
   assert.match(html, /createPaymentPayload/);
+  assert.match(html, /X402Freighter/);
+  assert.doesNotMatch(html, /authModal\(/);
   assert.doesNotMatch(html, /openModal\(/);
   assert.doesNotMatch(html, /X-PAYMENT/);
 });

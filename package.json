@@ -15,11 +15,13 @@
     "test": "node --import tsx --test test/**/*.test.ts"
   },
   "dependencies": {
+    "@stellar/freighter-api": "^6.0.1",
     "@x402/core": "^2.7.0",
     "@x402/express": "^2.7.0",
     "@x402/stellar": "^2.7.0",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
+    "esbuild": "^0.25.10",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
     "openai": "^6.31.0"

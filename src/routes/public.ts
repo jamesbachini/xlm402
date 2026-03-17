@@ -2,6 +2,7 @@ import { Router } from "express";
 import { config } from "../config.js";
 import { buildPlatformCatalog } from "../platform/catalog.js";
 import { renderDocsPage, renderIndexPage, renderServicePage } from "../platform/html.js";
+import { getFreighterBrowserBundle } from "../services/browserBundle.js";
 import { getFacilitatorSupported } from "../services/facilitator.js";
 
 export const publicRouter = Router();
@@ -10,12 +11,12 @@ publicRouter.get("/", (_req, res) => {
   res.type("html").send(renderIndexPage(buildPlatformCatalog()));
 });
 
-publicRouter.get("/vendor/stellar-sdk-shim.mjs", (_req, res) => {
-  res.type("application/javascript").send(`
-export * from "https://esm.sh/@stellar/stellar-sdk@14.6.1?target=es2022";
-export { default } from "https://esm.sh/@stellar/stellar-sdk@14.6.1?target=es2022";
-export { xdr } from "https://esm.sh/@stellar/stellar-base@14.1.0?target=es2022";
-`);
+publicRouter.get("/vendor/freighter-x402.js", async (_req, res, next) => {
+  try {
+    res.type("application/javascript").send(await getFreighterBrowserBundle());
+  } catch (error) {
+    next(error);
+  }
 });
 
 publicRouter.get("/docs", (_req, res) => {
