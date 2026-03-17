@@ -30,6 +30,7 @@ type Config = {
   nodeEnv: string;
   platformName: string;
   publicBaseUrl: string;
+  stellarRpcUrls: Record<NetworkLabel, string>;
   requestTimeoutMs: number;
   cacheTtlSeconds: number;
   xlmPriceTtlSeconds: number;
@@ -115,6 +116,13 @@ export const config: Config = {
   nodeEnv: process.env.NODE_ENV?.trim() || "development",
   platformName: process.env.PLATFORM_NAME?.trim() || "xlm402 services",
   publicBaseUrl: parseUrl("PUBLIC_BASE_URL", "https://xlm402.com"),
+  stellarRpcUrls: {
+    mainnet: parseUrl(
+      "MAINNET_SOROBAN_RPC_URL",
+      "https://soroban-rpc.mainnet.stellar.gateway.fm",
+    ),
+    testnet: parseUrl("TESTNET_SOROBAN_RPC_URL", "https://soroban-testnet.stellar.org"),
+  },
   requestTimeoutMs: parseInteger("REQUEST_TIMEOUT_MS", 8000),
   cacheTtlSeconds: parseInteger("CACHE_TTL_SECONDS", 60),
   xlmPriceTtlSeconds: parseInteger("XLM_PRICE_TTL_SECONDS", 30),

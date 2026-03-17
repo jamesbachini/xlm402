@@ -1324,6 +1324,343 @@ function renderEndpointDetail(endpoint: PublishedEndpoint, baseUrl: string) {
   `;
 }
 
+function renderCatalogueClientScript() {
+  return `
+      <script>
+      const X402_CORE_CLIENT_URL = ${JSON.stringify("https://esm.sh/@x402/core@2.7.0/client?bundle")};
+      const X402_STELLAR_CLIENT_URL = ${JSON.stringify("https://esm.sh/@x402/stellar@2.7.0/exact/client?bundle")};
+      const STELLAR_RPC_URLS = {
+        'stellar:pubnet': ${JSON.stringify(config.stellarRpcUrls.mainnet)},
+        'stellar:testnet': ${JSON.stringify(config.stellarRpcUrls.testnet)},
+      };
+
+      let walletKitReady = false;
+      let x402BrowserDepsPromise = null;
+
+      function ensureWalletKit() {
+        if (walletKitReady) return;
+        if (!window.MyWalletKit) throw new Error('Wallet kit failed to load. Please refresh the page.');
+        const { StellarWalletsKit, SwkAppDarkTheme, defaultModules } = window.MyWalletKit;
+        StellarWalletsKit.init({ theme: SwkAppDarkTheme, modules: defaultModules() });
+        walletKitReady = true;
+      }
+
+      function getNetworkPassphrase(network) {
+        if (network === 'stellar:testnet') return 'Test SDF Network ; September 2015';
+        if (network === 'stellar:pubnet') return 'Public Global Stellar Network ; September 2015';
+        throw new Error('Unsupported Stellar network: ' + network);
+      }
+
+      function getSorobanRpcUrl(network) {
+        const rpcUrl = STELLAR_RPC_URLS[network];
+        if (!rpcUrl) {
+          throw new Error('No Soroban RPC URL configured for ' + network + '.');
+        }
+        return rpcUrl;
+      }
+
+      function normalizeHeaders(headers) {
+        const result = {};
+        headers.forEach((value, key) => {
+          result[key.toLowerCase()] = value;
+        });
+        return result;
+      }
+
+      function decodeBase64Json(value) {
+        const binary = window.atob(value);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return JSON.parse(new TextDecoder().decode(bytes));
+      }
+
+      async function readResponseBody(response) {
+        return response.json().catch(() => response.text());
+      }
+
+      function clearInlineError(btn) {
+        const next = btn.parentElement && btn.parentElement.nextElementSibling;
+        if (next && next.classList && next.classList.contains('wallet-error')) {
+          next.remove();
+        }
+      }
+
+      function showInlineError(btn, message) {
+        clearInlineError(btn);
+        btn.parentElement.insertAdjacentHTML(
+          'afterend',
+          '<p class="wallet-error" style="color: var(--pink); font-size: 0.85rem; margin-top: 8px;">' +
+            escapeHtmlClient(String(message)) +
+          '</p>',
+        );
+      }
+
+      async function loadX402BrowserDeps() {
+        if (!x402BrowserDepsPromise) {
+          x402BrowserDepsPromise = Promise.all([
+            import(X402_CORE_CLIENT_URL),
+            import(X402_STELLAR_CLIENT_URL),
+          ]).then(([core, stellar]) => ({ core, stellar }));
+        }
+        return x402BrowserDepsPromise;
+      }
+
+      async function connectFreighter(network) {
+        ensureWalletKit();
+        const { StellarWalletsKit } = window.MyWalletKit;
+        StellarWalletsKit.setWallet('freighter');
+
+        try {
+          const existing = await StellarWalletsKit.getAddress();
+          if (existing && existing.address) {
+            return existing.address;
+          }
+        } catch (_err) {
+          // Fall through to the wallet modal.
+        }
+
+        StellarWalletsKit.setNetwork(getNetworkPassphrase(network));
+        const connected = await StellarWalletsKit.authModal();
+        if (connected && connected.address) {
+          return connected.address;
+        }
+
+        throw new Error('Freighter connection was cancelled.');
+      }
+
+      async function createStellarHttpClient(address, network) {
+        ensureWalletKit();
+        const { StellarWalletsKit } = window.MyWalletKit;
+        const deps = await loadX402BrowserDeps();
+        const { x402Client, x402HTTPClient } = deps.core;
+        const { ExactStellarScheme } = deps.stellar;
+        const networkPassphrase = getNetworkPassphrase(network);
+
+        const signer = {
+          address,
+          signAuthEntry(authEntryXdr, options) {
+            return StellarWalletsKit.signAuthEntry(authEntryXdr, {
+              address,
+              networkPassphrase: options && options.networkPassphrase
+                ? options.networkPassphrase
+                : networkPassphrase,
+            });
+          },
+          signTransaction(transactionXdr, options) {
+            return StellarWalletsKit.signTransaction(transactionXdr, {
+              address,
+              networkPassphrase: options && options.networkPassphrase
+                ? options.networkPassphrase
+                : networkPassphrase,
+            });
+          },
+        };
+
+        const coreClient = new x402Client().register(
+          'stellar:*',
+          new ExactStellarScheme(signer, { url: getSorobanRpcUrl(network) }),
+        );
+
+        return new x402HTTPClient(coreClient);
+      }
+
+      function findStellarRequirement(paymentRequired) {
+        if (!paymentRequired || !Array.isArray(paymentRequired.accepts)) {
+          return null;
+        }
+
+        return paymentRequired.accepts.find(requirement =>
+          requirement &&
+          requirement.scheme === 'exact' &&
+          typeof requirement.network === 'string' &&
+          requirement.network.indexOf('stellar:') === 0,
+        ) || null;
+      }
+
+      function filterEndpoints(btn) {
+        const value = btn.getAttribute('data-network-filter');
+        document.querySelectorAll('.filter-btn').forEach(b => {
+          b.setAttribute('aria-pressed', String(b === btn));
+        });
+        document.querySelectorAll('.endpoint-card').forEach(card => {
+          const net = card.getAttribute('data-network');
+          card.style.display = (value === 'all' || net === value) ? '' : 'none';
+        });
+      }
+
+      async function tryEndpoint(btn) {
+        const method = btn.dataset.method;
+        const path = btn.dataset.path;
+        const baseUrl = btn.dataset.baseUrl;
+        const resultId = 'result-' + btn.dataset.endpointId;
+        const resultEl = document.getElementById(resultId);
+
+        btn.disabled = true;
+        btn.textContent = 'Calling endpoint...';
+        resultEl.classList.add('visible');
+        resultEl.innerHTML = '<p style="color: var(--text-tertiary); font-size: 0.85rem;">Making request...</p>';
+
+        try {
+          const url = baseUrl + path;
+          const fetchOpts = {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+          };
+          let finalUrl = url;
+
+          if (method === 'POST') {
+            if (path.includes('/chat/')) {
+              fetchOpts.body = JSON.stringify({ prompt: 'Hello, world!', reasoning_effort: 'minimal' });
+            } else if (path.includes('/image/')) {
+              fetchOpts.body = JSON.stringify({ prompt: 'A beautiful sunset over the ocean' });
+            }
+          } else {
+            const sep = path.includes('?') ? '&' : '?';
+            const params = 'latitude=51.5072&longitude=-0.1276&timezone=auto';
+            if (path.includes('archive') || path.includes('history-summary')) {
+              finalUrl = url + sep + params + '&start_date=2026-03-01&end_date=2026-03-07&daily=temperature_2m_max,temperature_2m_min';
+            } else if (path.includes('forecast')) {
+              finalUrl = url + sep + params + '&daily=temperature_2m_max,temperature_2m_min&forecast_days=3';
+            } else {
+              finalUrl = url + sep + params;
+            }
+          }
+
+          const response = await fetch(finalUrl, fetchOpts);
+          const body = await readResponseBody(response);
+
+          if (response.status === 402) {
+            const ctx = {
+              method,
+              url: finalUrl,
+              fetchOpts,
+              body,
+              responseHeaders: normalizeHeaders(response.headers),
+            };
+
+            resultEl.innerHTML =
+              '<div class="try-status status-402">&#9888; 402 Payment Required</div>' +
+              '<pre>' + escapeHtmlClient(JSON.stringify(body, null, 2)) + '</pre>' +
+              '<div style="margin-top: 16px;">' +
+              '<button class="try-btn pay-freighter-btn">' +
+              '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
+              'Pay with Freighter' +
+              '</button>' +
+              '</div>';
+
+            const payBtn = resultEl.querySelector('.pay-freighter-btn');
+            payBtn.__x402ctx = ctx;
+            payBtn.addEventListener('click', function() { payWithFreighter(this, this.__x402ctx); });
+          } else {
+            resultEl.innerHTML =
+              '<div class="try-status status-200">&#10003; ' + response.status + ' OK</div>' +
+              '<pre>' + escapeHtmlClient(JSON.stringify(body, null, 2)) + '</pre>';
+          }
+        } catch (err) {
+          resultEl.innerHTML =
+            '<div class="try-status status-error">&#10007; Error</div>' +
+            '<pre>' + escapeHtmlClient(String(err && err.message ? err.message : err)) + '</pre>';
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try again';
+      }
+
+      async function payWithFreighter(btn, ctx) {
+        const resultEl = btn.closest('.try-section').querySelector('.try-result');
+
+        btn.disabled = true;
+        btn.textContent = 'Reading payment requirements...';
+        clearInlineError(btn);
+
+        try {
+          const paymentRequiredHeader = ctx && ctx.responseHeaders
+            ? ctx.responseHeaders['payment-required']
+            : null;
+
+          if (!paymentRequiredHeader) {
+            throw new Error('402 response is missing the PAYMENT-REQUIRED header.');
+          }
+
+          const paymentRequired = decodeBase64Json(paymentRequiredHeader);
+          const stellarRequirement = findStellarRequirement(paymentRequired);
+
+          if (!stellarRequirement) {
+            throw new Error('No Stellar payment option was returned for this endpoint.');
+          }
+
+          btn.textContent = 'Connecting Freighter...';
+          const address = await connectFreighter(stellarRequirement.network);
+          if (!address) {
+            throw new Error('No wallet address was returned from Freighter.');
+          }
+
+          btn.textContent = 'Building x402 payment...';
+          const httpClient = await createStellarHttpClient(address, stellarRequirement.network);
+          const paymentPayload = await httpClient.createPaymentPayload(paymentRequired);
+          const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
+
+          btn.textContent = 'Sending paid request...';
+          const retryOpts = {
+            method: ctx.method,
+            headers: {
+              'Content-Type': 'application/json',
+              ...paymentHeaders,
+            },
+          };
+
+          if (ctx.fetchOpts && ctx.fetchOpts.body) {
+            retryOpts.body = ctx.fetchOpts.body;
+          }
+
+          const retryResponse = await fetch(ctx.url, retryOpts);
+          const retryBody = await readResponseBody(retryResponse);
+          let settlement = null;
+
+          try {
+            settlement = httpClient.getPaymentSettleResponse(name => retryResponse.headers.get(name));
+          } catch (_err) {
+            settlement = null;
+          }
+
+          if (retryResponse.ok) {
+            let html =
+              '<div class="try-status status-200">&#10003; ' + retryResponse.status + ' Paid &amp; Delivered</div>' +
+              '<pre>' + escapeHtmlClient(JSON.stringify(retryBody, null, 2)) + '</pre>';
+
+            if (settlement) {
+              html +=
+                '<div style="margin-top: 12px;">' +
+                '<div class="section-label" style="margin-bottom: 8px;">Settlement</div>' +
+                '<pre>' + escapeHtmlClient(JSON.stringify(settlement, null, 2)) + '</pre>' +
+                '</div>';
+            }
+
+            resultEl.innerHTML = html;
+          } else {
+            resultEl.innerHTML =
+              '<div class="try-status status-error">&#10007; ' + retryResponse.status + '</div>' +
+              '<pre>' + escapeHtmlClient(JSON.stringify(retryBody, null, 2)) + '</pre>';
+          }
+        } catch (err) {
+          showInlineError(btn, err && err.message ? err.message : String(err));
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Retry Payment';
+      }
+
+      function escapeHtmlClient(str) {
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+      }
+      </script>
+  `;
+}
+
 export function renderServicePage(
   service: ServiceDefinition,
   catalog: PlatformCatalog,
@@ -1382,228 +1719,7 @@ export function renderServicePage(
 
         ${renderFooter()}
       </div>
-
-      <script>
-      let walletKitReady = false;
-      function ensureWalletKit() {
-        if (walletKitReady) return;
-        if (!window.MyWalletKit) throw new Error('Wallet kit failed to load. Please refresh the page.');
-        const { StellarWalletsKit, SwkAppDarkTheme, defaultModules } = window.MyWalletKit;
-        StellarWalletsKit.init({ theme: SwkAppDarkTheme, modules: defaultModules() });
-        walletKitReady = true;
-      }
-
-      function getWalletAddress() {
-        const { StellarWalletsKit, KitEventType } = window.MyWalletKit;
-        return StellarWalletsKit.getAddress()
-          .then(result => {
-            if (result && result.address) return result.address;
-            throw new Error('no_address');
-          })
-          .catch(() => {
-            return new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => {
-                reject(new Error('Wallet connection timed out. Please try again.'));
-              }, 120000);
-              StellarWalletsKit.on(KitEventType.STATE_UPDATED, (event) => {
-                if (event.payload && event.payload.address) {
-                  clearTimeout(timeout);
-                  resolve(event.payload.address);
-                }
-              });
-              StellarWalletsKit.openModal();
-            });
-          });
-      }
-
-      function filterEndpoints(btn) {
-        const value = btn.getAttribute('data-network-filter');
-        document.querySelectorAll('.filter-btn').forEach(b => {
-          b.setAttribute('aria-pressed', String(b === btn));
-        });
-        document.querySelectorAll('.endpoint-card').forEach(card => {
-          const net = card.getAttribute('data-network');
-          card.style.display = (value === 'all' || net === value) ? '' : 'none';
-        });
-      }
-
-      async function tryEndpoint(btn) {
-        const method = btn.dataset.method;
-        const path = btn.dataset.path;
-        const baseUrl = btn.dataset.baseUrl;
-        const resultId = 'result-' + btn.dataset.endpointId;
-        const resultEl = document.getElementById(resultId);
-
-        btn.disabled = true;
-        btn.textContent = 'Calling endpoint...';
-        resultEl.classList.add('visible');
-        resultEl.innerHTML = '<p style="color: var(--text-tertiary); font-size: 0.85rem;">Making request...</p>';
-
-        try {
-          // Step 1: Make the initial request to get 402
-          const url = baseUrl + path;
-          let fetchOpts = { method, headers: { 'Content-Type': 'application/json' } };
-
-          // For POST endpoints, use a minimal default body
-          if (method === 'POST') {
-            if (path.includes('/chat/')) {
-              fetchOpts.body = JSON.stringify({ prompt: 'Hello, world!', reasoning_effort: 'minimal' });
-            } else if (path.includes('/image/')) {
-              fetchOpts.body = JSON.stringify({ prompt: 'A beautiful sunset over the ocean' });
-            }
-          } else {
-            // For weather GET endpoints, add default params
-            const sep = path.includes('?') ? '&' : '?';
-            const params = 'latitude=51.5072&longitude=-0.1276&timezone=auto';
-            if (path.includes('archive') || path.includes('history-summary')) {
-              fetchOpts = { method, headers: fetchOpts.headers };
-              const archiveUrl = url + sep + params + '&start_date=2026-03-01&end_date=2026-03-07&daily=temperature_2m_max,temperature_2m_min';
-              var finalUrl = archiveUrl;
-            } else if (path.includes('forecast')) {
-              fetchOpts = { method, headers: fetchOpts.headers };
-              var finalUrl = url + sep + params + '&daily=temperature_2m_max,temperature_2m_min&forecast_days=3';
-            } else {
-              fetchOpts = { method, headers: fetchOpts.headers };
-              var finalUrl = url + sep + params;
-            }
-          }
-
-          const response = await fetch(finalUrl || url, fetchOpts);
-          const status = response.status;
-
-          if (status === 402) {
-            // Step 2: Extract payment requirements
-            let body;
-            try { body = await response.json(); } catch { body = await response.text(); }
-
-            const ctx = JSON.stringify({ method, path: finalUrl || (baseUrl + path), fetchOpts, body });
-            resultEl.innerHTML =
-              '<div class="try-status status-402">&#9888; 402 Payment Required</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(body, null, 2)) + '</pre>' +
-              '<div style="margin-top: 16px;">' +
-              '<button class="try-btn pay-freighter-btn">' +
-              '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
-              'Pay with Freighter' +
-              '</button>' +
-              '</div>';
-            const payBtn = resultEl.querySelector('.pay-freighter-btn');
-            payBtn.__x402ctx = ctx;
-            payBtn.addEventListener('click', function() { payWithFreighter(this, this.__x402ctx); });
-          } else {
-            const body = await response.json().catch(() => response.text());
-            resultEl.innerHTML =
-              '<div class="try-status status-200">&#10003; ' + status + ' OK</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(body, null, 2)) + '</pre>';
-          }
-        } catch (err) {
-          resultEl.innerHTML =
-            '<div class="try-status status-error">&#10007; Error</div>' +
-            '<pre>' + escapeHtmlClient(String(err)) + '</pre>';
-        }
-
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try again';
-      }
-
-      async function payWithFreighter(btn, contextStr) {
-        const ctx = JSON.parse(contextStr);
-        btn.disabled = true;
-        btn.textContent = 'Connecting wallet...';
-
-        try {
-          ensureWalletKit();
-
-          const address = await getWalletAddress();
-          if (!address) throw new Error('No wallet address. Please connect a wallet first.');
-
-          btn.textContent = 'Preparing payment...';
-
-          const paymentDetails = ctx.body;
-          let paymentPayload = null;
-
-          if (paymentDetails && paymentDetails.x402 && paymentDetails.x402.payment) {
-            paymentPayload = paymentDetails.x402.payment;
-          } else if (paymentDetails && paymentDetails.payment) {
-            paymentPayload = paymentDetails.payment;
-          } else if (paymentDetails && paymentDetails.accepts) {
-            paymentPayload = paymentDetails;
-          }
-
-          if (!paymentPayload) {
-            throw new Error('Could not parse payment requirements from 402 response.');
-          }
-
-          let signedPayment;
-
-          if (paymentPayload.accepts && Array.isArray(paymentPayload.accepts)) {
-            const stellarScheme = paymentPayload.accepts.find(a =>
-              a.scheme === 'exact' && a.network && a.network.startsWith('stellar')
-            );
-            if (!stellarScheme) throw new Error('No Stellar payment scheme found in 402 response.');
-
-            if (stellarScheme.extra && stellarScheme.extra.xdr) {
-              btn.textContent = 'Sign transaction in wallet...';
-              const networkPassphrase = stellarScheme.network === 'stellar:testnet'
-                ? 'Test SDF Network ; September 2015'
-                : 'Public Global Stellar Network ; September 2015';
-
-              const { StellarWalletsKit } = window.MyWalletKit;
-              const { signedTxXdr } = await StellarWalletsKit.signTransaction(stellarScheme.extra.xdr, {
-                networkPassphrase,
-                address,
-              });
-
-              signedPayment = signedTxXdr;
-            }
-          }
-
-          if (!signedPayment) {
-            throw new Error('Payment signing flow not completed.');
-          }
-
-          btn.textContent = 'Sending payment...';
-
-          const retryOpts = {
-            method: ctx.method,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-PAYMENT': signedPayment,
-            },
-          };
-          if (ctx.fetchOpts && ctx.fetchOpts.body) {
-            retryOpts.body = ctx.fetchOpts.body;
-          }
-
-          const retryResponse = await fetch(ctx.path, retryOpts);
-          const retryBody = await retryResponse.json().catch(() => retryResponse.text());
-          const resultEl = btn.closest('.try-section').querySelector('.try-result');
-
-          if (retryResponse.ok) {
-            resultEl.innerHTML =
-              '<div class="try-status status-200">&#10003; ' + retryResponse.status + ' Paid &amp; Delivered</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(retryBody, null, 2)) + '</pre>';
-          } else {
-            resultEl.innerHTML =
-              '<div class="try-status status-error">&#10007; ' + retryResponse.status + '</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(retryBody, null, 2)) + '</pre>';
-          }
-
-        } catch (err) {
-          btn.parentElement.insertAdjacentHTML('afterend',
-            '<p style="color: var(--pink); font-size: 0.85rem; margin-top: 8px;">' + escapeHtmlClient(String(err.message || err)) + '</p>'
-          );
-        }
-
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Retry Payment';
-      }
-
-      function escapeHtmlClient(str) {
-        const div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-      }
-      </script>
+      ${renderCatalogueClientScript()}
     `,
   });
 }
@@ -1665,212 +1781,7 @@ export function renderDocsPage(catalog: PlatformCatalog) {
 
         ${renderFooter()}
       </div>
-
-      <script>
-      let walletKitReady = false;
-      function ensureWalletKit() {
-        if (walletKitReady) return;
-        if (!window.MyWalletKit) throw new Error('Wallet kit failed to load. Please refresh the page.');
-        const { StellarWalletsKit, SwkAppDarkTheme, defaultModules } = window.MyWalletKit;
-        StellarWalletsKit.init({ theme: SwkAppDarkTheme, modules: defaultModules() });
-        walletKitReady = true;
-      }
-
-      function getWalletAddress() {
-        const { StellarWalletsKit, KitEventType } = window.MyWalletKit;
-        return StellarWalletsKit.getAddress()
-          .then(result => {
-            if (result && result.address) return result.address;
-            throw new Error('no_address');
-          })
-          .catch(() => {
-            return new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => {
-                reject(new Error('Wallet connection timed out. Please try again.'));
-              }, 120000);
-              StellarWalletsKit.on(KitEventType.STATE_UPDATED, (event) => {
-                if (event.payload && event.payload.address) {
-                  clearTimeout(timeout);
-                  resolve(event.payload.address);
-                }
-              });
-              StellarWalletsKit.openModal();
-            });
-          });
-      }
-
-      function filterEndpoints(btn) {
-        const value = btn.getAttribute('data-network-filter');
-        document.querySelectorAll('.filter-btn').forEach(b => {
-          b.setAttribute('aria-pressed', String(b === btn));
-        });
-        document.querySelectorAll('.endpoint-card').forEach(card => {
-          const net = card.getAttribute('data-network');
-          card.style.display = (value === 'all' || net === value) ? '' : 'none';
-        });
-      }
-
-      async function tryEndpoint(btn) {
-        const method = btn.dataset.method;
-        const path = btn.dataset.path;
-        const baseUrl = btn.dataset.baseUrl;
-        const resultId = 'result-' + btn.dataset.endpointId;
-        const resultEl = document.getElementById(resultId);
-
-        btn.disabled = true;
-        btn.textContent = 'Calling endpoint...';
-        resultEl.classList.add('visible');
-        resultEl.innerHTML = '<p style="color: var(--text-tertiary); font-size: 0.85rem;">Making request...</p>';
-
-        try {
-          const url = baseUrl + path;
-          let fetchOpts = { method, headers: { 'Content-Type': 'application/json' } };
-          var finalUrl = url;
-
-          if (method === 'POST') {
-            if (path.includes('/chat/')) {
-              fetchOpts.body = JSON.stringify({ prompt: 'Hello, world!', reasoning_effort: 'minimal' });
-            } else if (path.includes('/image/')) {
-              fetchOpts.body = JSON.stringify({ prompt: 'A beautiful sunset over the ocean' });
-            }
-          } else {
-            const sep = path.includes('?') ? '&' : '?';
-            const params = 'latitude=51.5072&longitude=-0.1276&timezone=auto';
-            if (path.includes('archive') || path.includes('history-summary')) {
-              finalUrl = url + sep + params + '&start_date=2026-03-01&end_date=2026-03-07&daily=temperature_2m_max,temperature_2m_min';
-            } else if (path.includes('forecast')) {
-              finalUrl = url + sep + params + '&daily=temperature_2m_max,temperature_2m_min&forecast_days=3';
-            } else {
-              finalUrl = url + sep + params;
-            }
-          }
-
-          const response = await fetch(finalUrl, fetchOpts);
-          const status = response.status;
-
-          if (status === 402) {
-            let body;
-            try { body = await response.json(); } catch { body = await response.text(); }
-
-            const ctx = JSON.stringify({ method, path: finalUrl, fetchOpts, body });
-            resultEl.innerHTML =
-              '<div class="try-status status-402">&#9888; 402 Payment Required</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(body, null, 2)) + '</pre>' +
-              '<div style="margin-top: 16px;">' +
-              '<button class="try-btn pay-freighter-btn">' +
-              '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
-              'Pay with Freighter' +
-              '</button>' +
-              '</div>';
-            const payBtn = resultEl.querySelector('.pay-freighter-btn');
-            payBtn.__x402ctx = ctx;
-            payBtn.addEventListener('click', function() { payWithFreighter(this, this.__x402ctx); });
-          } else {
-            const body = await response.json().catch(() => response.text());
-            resultEl.innerHTML =
-              '<div class="try-status status-200">&#10003; ' + status + ' OK</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(body, null, 2)) + '</pre>';
-          }
-        } catch (err) {
-          resultEl.innerHTML =
-            '<div class="try-status status-error">&#10007; Error</div>' +
-            '<pre>' + escapeHtmlClient(String(err)) + '</pre>';
-        }
-
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try again';
-      }
-
-      async function payWithFreighter(btn, contextStr) {
-        const ctx = JSON.parse(contextStr);
-        btn.disabled = true;
-        btn.textContent = 'Connecting wallet...';
-
-        try {
-          ensureWalletKit();
-          const address = await getWalletAddress();
-          if (!address) throw new Error('No wallet address. Please connect a wallet first.');
-
-          btn.textContent = 'Preparing payment...';
-
-          const paymentDetails = ctx.body;
-          let paymentPayload = null;
-
-          if (paymentDetails && paymentDetails.x402 && paymentDetails.x402.payment) {
-            paymentPayload = paymentDetails.x402.payment;
-          } else if (paymentDetails && paymentDetails.payment) {
-            paymentPayload = paymentDetails.payment;
-          } else if (paymentDetails && paymentDetails.accepts) {
-            paymentPayload = paymentDetails;
-          }
-
-          if (!paymentPayload) {
-            throw new Error('Could not parse payment requirements from 402 response.');
-          }
-
-          let signedPayment;
-          if (paymentPayload.accepts && Array.isArray(paymentPayload.accepts)) {
-            const stellarScheme = paymentPayload.accepts.find(a =>
-              a.scheme === 'exact' && a.network && a.network.startsWith('stellar')
-            );
-            if (!stellarScheme) throw new Error('No Stellar payment scheme found.');
-
-            if (stellarScheme.extra && stellarScheme.extra.xdr) {
-              btn.textContent = 'Sign transaction in wallet...';
-              const networkPassphrase = stellarScheme.network === 'stellar:testnet'
-                ? 'Test SDF Network ; September 2015'
-                : 'Public Global Stellar Network ; September 2015';
-
-              const { StellarWalletsKit } = window.MyWalletKit;
-              const { signedTxXdr } = await StellarWalletsKit.signTransaction(stellarScheme.extra.xdr, {
-                networkPassphrase,
-                address,
-              });
-              signedPayment = signedTxXdr;
-            }
-          }
-
-          if (!signedPayment) {
-            throw new Error('Payment signing flow not completed.');
-          }
-
-          btn.textContent = 'Sending payment...';
-
-          const retryOpts = {
-            method: ctx.method,
-            headers: { 'Content-Type': 'application/json', 'X-PAYMENT': signedPayment },
-          };
-          if (ctx.fetchOpts && ctx.fetchOpts.body) retryOpts.body = ctx.fetchOpts.body;
-
-          const retryResponse = await fetch(ctx.path, retryOpts);
-          const retryBody = await retryResponse.json().catch(() => retryResponse.text());
-          const resultEl = btn.closest('.try-section').querySelector('.try-result');
-
-          if (retryResponse.ok) {
-            resultEl.innerHTML =
-              '<div class="try-status status-200">&#10003; ' + retryResponse.status + ' Paid &amp; Delivered</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(retryBody, null, 2)) + '</pre>';
-          } else {
-            resultEl.innerHTML =
-              '<div class="try-status status-error">&#10007; ' + retryResponse.status + '</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(retryBody, null, 2)) + '</pre>';
-          }
-        } catch (err) {
-          btn.parentElement.insertAdjacentHTML('afterend',
-            '<p style="color: var(--pink); font-size: 0.85rem; margin-top: 8px;">' + escapeHtmlClient(String(err.message || err)) + '</p>'
-          );
-        }
-
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Retry Payment';
-      }
-
-      function escapeHtmlClient(str) {
-        const div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-      }
-      </script>
+      ${renderCatalogueClientScript()}
     `,
   });
 }
