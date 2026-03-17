@@ -20,11 +20,11 @@ export async function createApp() {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "https://esm.sh"],
           scriptSrcAttr: ["'unsafe-inline'"],
           styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
           fontSrc: ["'self'", "https://fonts.gstatic.com"],
-          connectSrc: ["'self'", config.publicBaseUrl],
+          connectSrc: ["'self'", config.publicBaseUrl, "https://esm.sh"],
           imgSrc: ["'self'", "data:"],
         },
       },

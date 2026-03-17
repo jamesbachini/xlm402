@@ -1475,41 +1475,28 @@ export function renderServicePage(
       async function payWithFreighter(btn, contextStr) {
         const ctx = JSON.parse(contextStr);
         btn.disabled = true;
-        btn.textContent = 'Connecting to Freighter...';
+        btn.textContent = 'Loading Freighter API...';
 
         try {
-          if (typeof window.freighterApi === 'undefined' && typeof window.freighter === 'undefined') {
-            throw new Error('Freighter wallet extension not detected. Please install Freighter from freighter.app and refresh.');
+          const freighter = await import('https://esm.sh/@stellar/freighter-api@6');
+
+          const connResult = await freighter.isConnected();
+          if (!connResult.isConnected) {
+            throw new Error('Freighter wallet not detected or not connected. Please install Freighter from freighter.app, unlock it, and refresh.');
           }
 
-          const freighter = window.freighterApi || window.freighter;
-
-          // Request access
-          if (freighter.requestAccess) {
-            await freighter.requestAccess();
+          btn.textContent = 'Requesting access...';
+          const accessResult = await freighter.requestAccess();
+          if (accessResult.error) {
+            throw new Error('Freighter access denied: ' + accessResult.error);
           }
 
-          // Get the public key
-          let publicKey;
-          if (freighter.getPublicKey) {
-            publicKey = await freighter.getPublicKey();
-          } else if (freighter.getAddress) {
-            const addrResult = await freighter.getAddress();
-            publicKey = typeof addrResult === 'string' ? addrResult : addrResult.address;
-          }
-
+          const publicKey = accessResult.address;
           if (!publicKey) throw new Error('Could not retrieve public key from Freighter.');
 
           btn.textContent = 'Preparing payment...';
 
-          // Extract payment details from the 402 response body
           const paymentDetails = ctx.body;
-
-          // The x402 protocol includes payment requirements in the 402 response.
-          // We need to construct a Stellar transaction based on these requirements
-          // and sign it with Freighter.
-
-          // Look for x402 payment header info in the response
           let paymentPayload = null;
 
           if (paymentDetails && paymentDetails.x402 && paymentDetails.x402.payment) {
@@ -1517,7 +1504,6 @@ export function renderServicePage(
           } else if (paymentDetails && paymentDetails.payment) {
             paymentPayload = paymentDetails.payment;
           } else if (paymentDetails && paymentDetails.accepts) {
-            // x402 format: accepts array with payment schemes
             paymentPayload = paymentDetails;
           }
 
@@ -1525,35 +1511,38 @@ export function renderServicePage(
             throw new Error('Could not parse payment requirements from 402 response. Check the response format above.');
           }
 
-          // For x402/stellar, sign the transaction envelope if provided
           let signedPayment;
 
           if (paymentPayload.accepts && Array.isArray(paymentPayload.accepts)) {
-            // Standard x402 response format
             const stellarScheme = paymentPayload.accepts.find(a =>
               a.scheme === 'exact' && a.network && a.network.startsWith('stellar')
             );
             if (!stellarScheme) throw new Error('No Stellar payment scheme found in 402 response.');
 
-            // Sign the XDR envelope with Freighter
             if (stellarScheme.extra && stellarScheme.extra.xdr) {
               btn.textContent = 'Sign in Freighter...';
-              const network = stellarScheme.network === 'stellar:testnet' ? 'TESTNET' : 'PUBLIC';
-              let signResult;
-              if (freighter.signTransaction) {
-                signResult = await freighter.signTransaction(stellarScheme.extra.xdr, { networkPassphrase: network === 'TESTNET' ? 'Test SDF Network ; September 2015' : 'Public Global Stellar Network ; September 2015' });
+              const networkPassphrase = stellarScheme.network === 'stellar:testnet'
+                ? 'Test SDF Network ; September 2015'
+                : 'Public Global Stellar Network ; September 2015';
+
+              const signResult = await freighter.signTransaction(stellarScheme.extra.xdr, {
+                networkPassphrase,
+                address: publicKey,
+              });
+
+              if (signResult.error) {
+                throw new Error('Freighter signing failed: ' + signResult.error);
               }
-              signedPayment = typeof signResult === 'string' ? signResult : (signResult && signResult.signedTxXdr) || signResult;
+              signedPayment = signResult.signedTxXdr;
             }
           }
 
           if (!signedPayment) {
-            throw new Error('Payment signing flow not completed. The facilitator may require a different payment format. Copy the curl command above to pay via CLI.');
+            throw new Error('Payment signing flow not completed. The facilitator may require a different payment format.');
           }
 
           btn.textContent = 'Sending payment...';
 
-          // Step 3: Retry the original request with the payment header
           const retryOpts = {
             method: ctx.method,
             headers: {
