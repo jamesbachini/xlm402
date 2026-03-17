@@ -1384,6 +1384,38 @@ export function renderServicePage(
       </div>
 
       <script>
+      let walletKitReady = false;
+      function ensureWalletKit() {
+        if (walletKitReady) return;
+        if (!window.MyWalletKit) throw new Error('Wallet kit failed to load. Please refresh the page.');
+        const { StellarWalletsKit, SwkAppDarkTheme, defaultModules } = window.MyWalletKit;
+        StellarWalletsKit.init({ theme: SwkAppDarkTheme, modules: defaultModules() });
+        walletKitReady = true;
+      }
+
+      function getWalletAddress() {
+        const { StellarWalletsKit, KitEventType } = window.MyWalletKit;
+        return StellarWalletsKit.getAddress()
+          .then(result => {
+            if (result && result.address) return result.address;
+            throw new Error('no_address');
+          })
+          .catch(() => {
+            return new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                reject(new Error('Wallet connection timed out. Please try again.'));
+              }, 120000);
+              StellarWalletsKit.on(KitEventType.STATE_UPDATED, (event) => {
+                if (event.payload && event.payload.address) {
+                  clearTimeout(timeout);
+                  resolve(event.payload.address);
+                }
+              });
+              StellarWalletsKit.openModal();
+            });
+          });
+      }
+
       function filterEndpoints(btn) {
         const value = btn.getAttribute('data-network-filter');
         document.querySelectorAll('.filter-btn').forEach(b => {
@@ -1473,15 +1505,6 @@ export function renderServicePage(
         btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try again';
       }
 
-      let walletKitReady = false;
-      function ensureWalletKit() {
-        if (walletKitReady) return;
-        if (!window.MyWalletKit) throw new Error('Wallet kit failed to load. Please refresh the page.');
-        const { StellarWalletsKit, SwkAppDarkTheme, defaultModules } = window.MyWalletKit;
-        StellarWalletsKit.init({ theme: SwkAppDarkTheme, modules: defaultModules() });
-        walletKitReady = true;
-      }
-
       async function payWithFreighter(btn, contextStr) {
         const ctx = JSON.parse(contextStr);
         btn.disabled = true;
@@ -1489,9 +1512,8 @@ export function renderServicePage(
 
         try {
           ensureWalletKit();
-          const { StellarWalletsKit } = window.MyWalletKit;
 
-          const { address } = await StellarWalletsKit.getAddress();
+          const address = await getWalletAddress();
           if (!address) throw new Error('No wallet address. Please connect a wallet first.');
 
           btn.textContent = 'Preparing payment...';
@@ -1525,6 +1547,7 @@ export function renderServicePage(
                 ? 'Test SDF Network ; September 2015'
                 : 'Public Global Stellar Network ; September 2015';
 
+              const { StellarWalletsKit } = window.MyWalletKit;
               const { signedTxXdr } = await StellarWalletsKit.signTransaction(stellarScheme.extra.xdr, {
                 networkPassphrase,
                 address,
@@ -1644,6 +1667,38 @@ export function renderDocsPage(catalog: PlatformCatalog) {
       </div>
 
       <script>
+      let walletKitReady = false;
+      function ensureWalletKit() {
+        if (walletKitReady) return;
+        if (!window.MyWalletKit) throw new Error('Wallet kit failed to load. Please refresh the page.');
+        const { StellarWalletsKit, SwkAppDarkTheme, defaultModules } = window.MyWalletKit;
+        StellarWalletsKit.init({ theme: SwkAppDarkTheme, modules: defaultModules() });
+        walletKitReady = true;
+      }
+
+      function getWalletAddress() {
+        const { StellarWalletsKit, KitEventType } = window.MyWalletKit;
+        return StellarWalletsKit.getAddress()
+          .then(result => {
+            if (result && result.address) return result.address;
+            throw new Error('no_address');
+          })
+          .catch(() => {
+            return new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                reject(new Error('Wallet connection timed out. Please try again.'));
+              }, 120000);
+              StellarWalletsKit.on(KitEventType.STATE_UPDATED, (event) => {
+                if (event.payload && event.payload.address) {
+                  clearTimeout(timeout);
+                  resolve(event.payload.address);
+                }
+              });
+              StellarWalletsKit.openModal();
+            });
+          });
+      }
+
       function filterEndpoints(btn) {
         const value = btn.getAttribute('data-network-filter');
         document.querySelectorAll('.filter-btn').forEach(b => {
@@ -1729,25 +1784,12 @@ export function renderDocsPage(catalog: PlatformCatalog) {
       async function payWithFreighter(btn, contextStr) {
         const ctx = JSON.parse(contextStr);
         btn.disabled = true;
-        btn.textContent = 'Connecting to Freighter...';
+        btn.textContent = 'Connecting wallet...';
 
         try {
-          if (typeof window.freighterApi === 'undefined' && typeof window.freighter === 'undefined') {
-            throw new Error('Freighter wallet extension not detected. Please install Freighter from freighter.app and refresh.');
-          }
-
-          const freighter = window.freighterApi || window.freighter;
-          if (freighter.requestAccess) await freighter.requestAccess();
-
-          let publicKey;
-          if (freighter.getPublicKey) {
-            publicKey = await freighter.getPublicKey();
-          } else if (freighter.getAddress) {
-            const addrResult = await freighter.getAddress();
-            publicKey = typeof addrResult === 'string' ? addrResult : addrResult.address;
-          }
-
-          if (!publicKey) throw new Error('Could not retrieve public key from Freighter.');
+          ensureWalletKit();
+          const address = await getWalletAddress();
+          if (!address) throw new Error('No wallet address. Please connect a wallet first.');
 
           btn.textContent = 'Preparing payment...';
 
@@ -1774,17 +1816,17 @@ export function renderDocsPage(catalog: PlatformCatalog) {
             if (!stellarScheme) throw new Error('No Stellar payment scheme found.');
 
             if (stellarScheme.extra && stellarScheme.extra.xdr) {
-              btn.textContent = 'Sign in Freighter...';
-              const network = stellarScheme.network === 'stellar:testnet' ? 'TESTNET' : 'PUBLIC';
-              let signResult;
-              if (freighter.signTransaction) {
-                signResult = await freighter.signTransaction(stellarScheme.extra.xdr, {
-                  networkPassphrase: network === 'TESTNET'
-                    ? 'Test SDF Network ; September 2015'
-                    : 'Public Global Stellar Network ; September 2015'
-                });
-              }
-              signedPayment = typeof signResult === 'string' ? signResult : (signResult && signResult.signedTxXdr) || signResult;
+              btn.textContent = 'Sign transaction in wallet...';
+              const networkPassphrase = stellarScheme.network === 'stellar:testnet'
+                ? 'Test SDF Network ; September 2015'
+                : 'Public Global Stellar Network ; September 2015';
+
+              const { StellarWalletsKit } = window.MyWalletKit;
+              const { signedTxXdr } = await StellarWalletsKit.signTransaction(stellarScheme.extra.xdr, {
+                networkPassphrase,
+                address,
+              });
+              signedPayment = signedTxXdr;
             }
           }
 
