@@ -4,9 +4,9 @@ import { ExactStellarScheme } from "@x402/stellar/exact/server";
 import { convertToTokenAmount, DEFAULT_TOKEN_DECIMALS } from "@x402/stellar";
 import { config } from "../config.js";
 import { buildPlatformCatalog } from "../platform/catalog.js";
-import { usdToXlm, getXlmUsdPrice } from "../services/xlmPrice.js";
+import { usdToXlm } from "../services/xlmPrice.js";
 
-export function createX402Middleware() {
+export async function createX402Middleware() {
   const mainnet = config.networks.mainnet;
   const testnet = config.networks.testnet;
 
@@ -108,6 +108,8 @@ export function createX402Middleware() {
   const resourceServer = new x402ResourceServer(facilitatorClients)
     .register(mainnet.stellarNetwork, new ExactStellarScheme())
     .register(testnet.stellarNetwork, new ExactStellarScheme());
+
+  await resourceServer.initialize();
 
   return paymentMiddleware(routes, resourceServer, undefined, undefined, false);
 }
