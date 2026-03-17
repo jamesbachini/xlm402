@@ -17,25 +17,7 @@ export async function createApp() {
   app.use(cors());
   app.use(
     helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "https://esm.sh", "https://cdn.jsdelivr.net"],
-          scriptSrcAttr: ["'unsafe-inline'"],
-          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-          fontSrc: ["'self'", "https://fonts.gstatic.com"],
-          connectSrc: [
-            "'self'",
-            config.publicBaseUrl,
-            "https://esm.sh",
-            "https://horizon.stellar.org",
-            config.stellarRpcUrls.mainnet,
-            "https://horizon-testnet.stellar.org",
-            config.stellarRpcUrls.testnet,
-          ],
-          imgSrc: ["'self'", "data:"],
-        },
-      },
+      contentSecurityPolicy: false,
     }),
   );
   app.use(express.json());

@@ -1050,6 +1050,16 @@ a { color: inherit; text-decoration: none; }
 }
 `;
 
+const browserImportMap = JSON.stringify({
+  imports: {
+    "https://esm.sh/@stellar/stellar-sdk@^14.6.1?target=es2022": "/vendor/stellar-sdk-shim.mjs",
+  },
+});
+
+function renderBrowserImportMap() {
+  return `<script type="importmap">${browserImportMap}</script>`;
+}
+
 function renderNav(activePage: string) {
   return `
     <nav class="nav">
@@ -1106,6 +1116,7 @@ function layout({
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+    ${renderBrowserImportMap()}
     <script src="https://cdn.jsdelivr.net/gh/jamesbachini/Stellar-Wallets-Kit-Boilerplate@main/vanilla/stellar-kit-bundle/dist/wallet-kit-bundle.umd.js"></script>
     <style>${sharedStyles}</style>
   </head>

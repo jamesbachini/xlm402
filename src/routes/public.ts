@@ -10,6 +10,14 @@ publicRouter.get("/", (_req, res) => {
   res.type("html").send(renderIndexPage(buildPlatformCatalog()));
 });
 
+publicRouter.get("/vendor/stellar-sdk-shim.mjs", (_req, res) => {
+  res.type("application/javascript").send(`
+export * from "https://esm.sh/@stellar/stellar-sdk@14.6.1?target=es2022";
+export { default } from "https://esm.sh/@stellar/stellar-sdk@14.6.1?target=es2022";
+export { xdr } from "https://esm.sh/@stellar/stellar-base@14.1.0?target=es2022";
+`);
+});
+
 publicRouter.get("/docs", (_req, res) => {
   res.type("html").send(renderDocsPage(buildPlatformCatalog()));
 });
