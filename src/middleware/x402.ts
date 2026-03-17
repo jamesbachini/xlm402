@@ -6,7 +6,7 @@ import { config } from "../config.js";
 import { buildPlatformCatalog } from "../platform/catalog.js";
 import { usdToXlm } from "../services/xlmPrice.js";
 
-export async function createX402Middleware() {
+export function createX402Middleware() {
   const mainnet = config.networks.mainnet;
   const testnet = config.networks.testnet;
 
@@ -109,7 +109,5 @@ export async function createX402Middleware() {
     .register(mainnet.stellarNetwork, new ExactStellarScheme())
     .register(testnet.stellarNetwork, new ExactStellarScheme());
 
-  await resourceServer.initialize();
-
-  return paymentMiddleware(routes, resourceServer, undefined, undefined, false);
+  return paymentMiddleware(routes, resourceServer);
 }

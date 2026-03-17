@@ -9,7 +9,7 @@ import { createX402Middleware } from "./middleware/x402.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
 import { config } from "./config.js";
 
-export async function createApp() {
+export function createApp() {
   const app = express();
 
   app.set("trust proxy", true);
@@ -40,7 +40,7 @@ export async function createApp() {
   });
 
   app.use(publicRouter);
-  app.use(await createX402Middleware());
+  app.use(createX402Middleware());
   app.use(
     "/weather",
     createWeatherRouter({
