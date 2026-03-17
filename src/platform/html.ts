@@ -1106,6 +1106,7 @@ function layout({
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/gh/jamesbachini/Stellar-Wallets-Kit-Boilerplate@main/vanilla/stellar-kit-bundle/dist/wallet-kit-bundle.umd.js"></script>
     <style>${sharedStyles}</style>
   </head>
   <body>
@@ -1472,26 +1473,26 @@ export function renderServicePage(
         btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try again';
       }
 
+      let walletKitReady = false;
+      function ensureWalletKit() {
+        if (walletKitReady) return;
+        if (!window.MyWalletKit) throw new Error('Wallet kit failed to load. Please refresh the page.');
+        const { StellarWalletsKit, SwkAppDarkTheme, defaultModules } = window.MyWalletKit;
+        StellarWalletsKit.init({ theme: SwkAppDarkTheme, modules: defaultModules() });
+        walletKitReady = true;
+      }
+
       async function payWithFreighter(btn, contextStr) {
         const ctx = JSON.parse(contextStr);
         btn.disabled = true;
-        btn.textContent = 'Loading Freighter API...';
+        btn.textContent = 'Connecting wallet...';
 
         try {
-          const freighter = await import('https://esm.sh/@stellar/freighter-api@6');
+          ensureWalletKit();
+          const { StellarWalletsKit } = window.MyWalletKit;
 
-          btn.textContent = 'Requesting access...';
-          let publicKey;
-          try {
-            const accessResult = await freighter.requestAccess();
-            if (accessResult.error) {
-              throw new Error(accessResult.error);
-            }
-            publicKey = accessResult.address;
-          } catch (accessErr) {
-            throw new Error('Could not connect to Freighter. Make sure the extension is installed from freighter.app, unlocked, and try again. (' + (accessErr.message || accessErr) + ')');
-          }
-          if (!publicKey) throw new Error('Could not retrieve public key from Freighter.');
+          const { address } = await StellarWalletsKit.getAddress();
+          if (!address) throw new Error('No wallet address. Please connect a wallet first.');
 
           btn.textContent = 'Preparing payment...';
 
@@ -1507,7 +1508,7 @@ export function renderServicePage(
           }
 
           if (!paymentPayload) {
-            throw new Error('Could not parse payment requirements from 402 response. Check the response format above.');
+            throw new Error('Could not parse payment requirements from 402 response.');
           }
 
           let signedPayment;
@@ -1519,25 +1520,22 @@ export function renderServicePage(
             if (!stellarScheme) throw new Error('No Stellar payment scheme found in 402 response.');
 
             if (stellarScheme.extra && stellarScheme.extra.xdr) {
-              btn.textContent = 'Sign in Freighter...';
+              btn.textContent = 'Sign transaction in wallet...';
               const networkPassphrase = stellarScheme.network === 'stellar:testnet'
                 ? 'Test SDF Network ; September 2015'
                 : 'Public Global Stellar Network ; September 2015';
 
-              const signResult = await freighter.signTransaction(stellarScheme.extra.xdr, {
+              const { signedTxXdr } = await StellarWalletsKit.signTransaction(stellarScheme.extra.xdr, {
                 networkPassphrase,
-                address: publicKey,
+                address,
               });
 
-              if (signResult.error) {
-                throw new Error('Freighter signing failed: ' + signResult.error);
-              }
-              signedPayment = signResult.signedTxXdr;
+              signedPayment = signedTxXdr;
             }
           }
 
           if (!signedPayment) {
-            throw new Error('Payment signing flow not completed. The facilitator may require a different payment format.');
+            throw new Error('Payment signing flow not completed.');
           }
 
           btn.textContent = 'Sending payment...';
