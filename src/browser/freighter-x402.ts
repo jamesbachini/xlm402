@@ -1,4 +1,5 @@
 import { x402Client, x402HTTPClient } from "@x402/core/client";
+import type { PaymentRequirements } from "@x402/core/types";
 import { ExactStellarScheme, getNetworkPassphrase } from "@x402/stellar";
 import {
   getNetworkDetails,
@@ -12,6 +13,7 @@ type StellarNetwork = "stellar:pubnet" | "stellar:testnet";
 type ConnectionOptions = {
   network: StellarNetwork;
   rpcUrls: Partial<Record<StellarNetwork, string>>;
+  preferredAsset?: string;
 };
 
 type WindowWithFreighter = Window & typeof globalThis & {
@@ -24,7 +26,15 @@ type WindowWithFreighter = Window & typeof globalThis & {
   };
 };
 
-async function connectAndCreateHttpClient({ network, rpcUrls }: ConnectionOptions) {
+function normalizeAssetId(asset: string | undefined) {
+  return asset?.trim().toUpperCase() || "";
+}
+
+async function connectAndCreateHttpClient({
+  network,
+  rpcUrls,
+  preferredAsset,
+}: ConnectionOptions) {
   const connection = await isConnected();
 
   if (connection.error) {
@@ -83,7 +93,22 @@ async function connectAndCreateHttpClient({ network, rpcUrls }: ConnectionOption
     },
   };
 
-  const coreClient = new x402Client().register(
+  const selectedAsset = normalizeAssetId(preferredAsset);
+  const paymentRequirementsSelector = selectedAsset
+    ? (_x402Version: number, accepts: PaymentRequirements[]) => {
+        const matchedRequirement = accepts.find(
+          (requirement) => normalizeAssetId(requirement.asset) === selectedAsset,
+        );
+
+        if (!matchedRequirement) {
+          throw new Error(`No Stellar payment requirement was returned for asset ${preferredAsset}.`);
+        }
+
+        return matchedRequirement;
+      }
+    : undefined;
+
+  const coreClient = new x402Client(paymentRequirementsSelector).register(
     "stellar:*",
     new ExactStellarScheme(signer, rpcUrl ? { url: rpcUrl } : undefined),
   );

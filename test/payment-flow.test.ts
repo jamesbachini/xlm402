@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import { Keypair } from "@stellar/stellar-sdk";
+import { getUsdcAddress } from "@x402/stellar";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 
 type JsonValue = Record<string, unknown> | unknown[];
@@ -24,6 +25,9 @@ type AppContext = {
 };
 
 let context: AppContext;
+let originalFetch: typeof fetch;
+let mainnetXlmContract: string;
+let testnetXlmContract: string;
 
 function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
@@ -89,6 +93,29 @@ before(async () => {
   const mainnetPayTo = Keypair.random().publicKey();
   const testnetPayTo = Keypair.random().publicKey();
   const facilitatorSigner = Keypair.random().publicKey();
+  originalFetch = globalThis.fetch.bind(globalThis);
+  mainnetXlmContract = getUsdcAddress("stellar:testnet");
+  testnetXlmContract = getUsdcAddress("stellar:pubnet");
+
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+
+    if (url === "https://api.binance.com/api/v3/ticker/price?symbol=XLMUSDT") {
+      return new Response(JSON.stringify({ price: "0.25" }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    }
+
+    return originalFetch(input, init);
+  };
 
   const weatherServer = await startJsonServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -195,6 +222,8 @@ before(async () => {
   process.env.TESTNET_FACILITATOR_URL = facilitatorServer.baseUrl;
   process.env.MAINNET_SOROBAN_RPC_URL = "https://soroban-rpc.mainnet.stellar.gateway.fm";
   process.env.TESTNET_SOROBAN_RPC_URL = "https://soroban-testnet.stellar.org";
+  process.env.MAINNET_XLM_CONTRACT_ADDRESS = mainnetXlmContract;
+  process.env.TESTNET_XLM_CONTRACT_ADDRESS = testnetXlmContract;
   process.env.OPEN_METEO_BASE_URL = weatherServer.baseUrl;
   process.env.OPEN_METEO_ARCHIVE_BASE_URL = weatherServer.baseUrl;
 
@@ -230,6 +259,7 @@ before(async () => {
 });
 
 after(async () => {
+  globalThis.fetch = originalFetch;
   await context.close();
 });
 
@@ -240,17 +270,76 @@ test("catalogue HTML uses the v2 payment flow and bundled Freighter client", () 
   assert.match(html, /PAYMENT-REQUIRED/);
   assert.match(html, /createPaymentPayload/);
   assert.match(html, /X402Freighter/);
+  assert.match(html, /data-asset-label/);
+  assert.match(html, /\['USDC', 'XLM'\]/);
+  assert.match(html, /preferredAsset/);
   assert.match(html, /class="request-editor"/);
   assert.match(html, /reasoning_effort&quot;: &quot;medium&quot;/);
   assert.doesNotMatch(html, /authModal\(/);
   assert.doesNotMatch(html, /openModal\(/);
+  assert.doesNotMatch(html, /Pay with Freighter/);
   assert.doesNotMatch(html, /X-PAYMENT/);
   assert.doesNotMatch(html, /reasoning_effort&quot;: &quot;minimal&quot;/);
   assert.doesNotMatch(html, /Hello, world!/);
   assert.doesNotMatch(html, /A beautiful sunset over the ocean/);
 });
 
+test("weather routes expose USDC and XLM payment requirements on mainnet and testnet", async () => {
+  const client = new x402HTTPClient(new x402Client());
+  const cases = [
+    {
+      route: "/weather/current",
+      url:
+        `${context.appBaseUrl}/weather/current` +
+        "?latitude=51.5072&longitude=-0.1276&timezone=auto",
+      network: "stellar:pubnet",
+      payTo: process.env.MAINNET_PAY_TO_ADDRESS!,
+      xlmContract: mainnetXlmContract,
+    },
+    {
+      route: "/testnet/weather/current",
+      url:
+        `${context.appBaseUrl}/testnet/weather/current` +
+        "?latitude=51.5072&longitude=-0.1276&timezone=auto",
+      network: "stellar:testnet",
+      payTo: process.env.TESTNET_PAY_TO_ADDRESS!,
+      xlmContract: testnetXlmContract,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const unpaidResponse = await fetch(testCase.url);
+    assert.equal(unpaidResponse.status, 402);
+
+    const unpaidBody = (await unpaidResponse.json()) as Record<string, unknown>;
+    const paymentRequired = client.getPaymentRequiredResponse(
+      (name) => unpaidResponse.headers.get(name) ?? undefined,
+      unpaidBody,
+    );
+
+    assert.equal(unpaidBody.route, testCase.route);
+    assert.equal(paymentRequired.accepts.length, 2);
+
+    const usdcRequirement = paymentRequired.accepts.find(
+      (requirement) => requirement.asset === getUsdcAddress(testCase.network),
+    );
+    const xlmRequirement = paymentRequired.accepts.find(
+      (requirement) => requirement.asset === testCase.xlmContract,
+    );
+
+    assert.ok(usdcRequirement);
+    assert.ok(xlmRequirement);
+    assert.equal(usdcRequirement.network, testCase.network);
+    assert.equal(xlmRequirement.network, testCase.network);
+    assert.equal(usdcRequirement.payTo, testCase.payTo);
+    assert.equal(xlmRequirement.payTo, testCase.payTo);
+  }
+});
+
 test("paid weather route accepts a v2 retry and returns settlement headers", async () => {
+  context.facilitatorRequests.verify.length = 0;
+  context.facilitatorRequests.settle.length = 0;
+
   const url =
     `${context.appBaseUrl}/weather/current` +
     "?latitude=51.5072&longitude=-0.1276&timezone=auto";
@@ -310,4 +399,85 @@ test("paid weather route accepts a v2 retry and returns settlement headers", asy
     "stellar:pubnet",
   );
   assert.deepEqual(settleRequest.paymentPayload, verifyRequest.paymentPayload);
+});
+
+test("XLM-selected retries settle against the configured XLM asset on both networks", async () => {
+  context.facilitatorRequests.verify.length = 0;
+  context.facilitatorRequests.settle.length = 0;
+
+  const cases = [
+    {
+      url:
+        `${context.appBaseUrl}/weather/current` +
+        "?latitude=51.5072&longitude=-0.1276&timezone=auto",
+      network: "stellar:pubnet",
+      xlmContract: mainnetXlmContract,
+      expectedNetwork: "mainnet",
+    },
+    {
+      url:
+        `${context.appBaseUrl}/testnet/weather/current` +
+        "?latitude=51.5072&longitude=-0.1276&timezone=auto",
+      network: "stellar:testnet",
+      xlmContract: testnetXlmContract,
+      expectedNetwork: "testnet",
+    },
+  ];
+
+  for (const testCase of cases) {
+    const unpaidResponse = await fetch(testCase.url);
+    assert.equal(unpaidResponse.status, 402);
+
+    const unpaidBody = (await unpaidResponse.json()) as Record<string, unknown>;
+    const client = new x402HTTPClient(
+      new x402Client((_x402Version, accepts) => {
+        const selectedRequirement = accepts.find(
+          (requirement) => requirement.asset === testCase.xlmContract,
+        );
+        assert.ok(selectedRequirement);
+        return selectedRequirement;
+      }).register("stellar:*", {
+        scheme: "exact",
+        async createPaymentPayload(x402Version: number) {
+          return {
+            x402Version,
+            payload: {
+              provider: "integration-test",
+              asset: "XLM",
+            },
+          };
+        },
+      }),
+    );
+
+    const paymentRequired = client.getPaymentRequiredResponse(
+      (name) => unpaidResponse.headers.get(name) ?? undefined,
+      unpaidBody,
+    );
+    const paymentPayload = await client.createPaymentPayload(paymentRequired);
+    const paidResponse = await fetch(testCase.url, {
+      headers: client.encodePaymentSignatureHeader(paymentPayload),
+    });
+
+    assert.equal(paidResponse.status, 200);
+
+    const paidBody = (await paidResponse.json()) as Record<string, unknown>;
+    assert.equal(paidBody.network, testCase.expectedNetwork);
+  }
+
+  assert.equal(context.facilitatorRequests.verify.length, 2);
+  assert.equal(context.facilitatorRequests.settle.length, 2);
+
+  context.facilitatorRequests.verify.forEach((request, index) => {
+    const payload = request.paymentPayload as Record<string, unknown>;
+    const accepted = payload.accepted as Record<string, unknown>;
+    const requirements = request.paymentRequirements as Record<string, unknown>;
+    const expectedContract = cases[index].xlmContract;
+    const expectedNetwork = cases[index].network;
+
+    assert.equal(accepted.asset, expectedContract);
+    assert.equal(accepted.network, expectedNetwork);
+    assert.equal(requirements.asset, expectedContract);
+    assert.equal(requirements.network, expectedNetwork);
+  });
 });

@@ -1,4 +1,5 @@
 import { config } from "../config.js";
+import { getUsdcAddress } from "@x402/stellar";
 import type { PlatformCatalog, PublishedEndpoint, ServiceDefinition } from "./catalog.js";
 
 function escapeHtml(value: string): string {
@@ -933,6 +934,12 @@ a { color: inherit; text-decoration: none; }
   font-family: var(--font-sans);
 }
 
+.wallet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .try-btn:hover {
   background: rgba(125,226,209,0.15);
   border-color: rgba(125,226,209,0.5);
@@ -1386,6 +1393,41 @@ function renderCatalogueClientScript() {
         'stellar:pubnet': ${JSON.stringify(config.stellarRpcUrls.mainnet)},
         'stellar:testnet': ${JSON.stringify(config.stellarRpcUrls.testnet)},
       };
+      const STELLAR_ASSET_LABELS = {
+        'stellar:pubnet': {
+          ${JSON.stringify(getUsdcAddress("stellar:pubnet"))}: 'USDC',
+          ${
+            config.networks.mainnet.xlmContractAddress
+              ? `${JSON.stringify(config.networks.mainnet.xlmContractAddress)}: 'XLM',`
+              : ""
+          }
+        },
+        'stellar:testnet': {
+          ${JSON.stringify(getUsdcAddress("stellar:testnet"))}: 'USDC',
+          ${
+            config.networks.testnet.xlmContractAddress
+              ? `${JSON.stringify(config.networks.testnet.xlmContractAddress)}: 'XLM',`
+              : ""
+          }
+        },
+      };
+
+      function normalizeAssetId(value) {
+        return typeof value === 'string' ? value.trim().toUpperCase() : '';
+      }
+
+      function getStellarAssetLabel(requirement) {
+        if (!requirement || typeof requirement.network !== 'string') {
+          return null;
+        }
+
+        const labels = STELLAR_ASSET_LABELS[requirement.network];
+        if (!labels) {
+          return null;
+        }
+
+        return labels[normalizeAssetId(requirement.asset)] || null;
+      }
 
       function normalizeHeaders(headers) {
         const result = {};
@@ -1495,7 +1537,7 @@ function renderCatalogueClientScript() {
         );
       }
 
-      function findStellarRequirement(paymentRequired) {
+      function findStellarRequirement(paymentRequired, assetLabel) {
         if (!paymentRequired || !Array.isArray(paymentRequired.accepts)) {
           return null;
         }
@@ -1504,8 +1546,24 @@ function renderCatalogueClientScript() {
           requirement &&
           requirement.scheme === 'exact' &&
           typeof requirement.network === 'string' &&
-          requirement.network.indexOf('stellar:') === 0,
+          requirement.network.indexOf('stellar:') === 0 &&
+          (!assetLabel || getStellarAssetLabel(requirement) === assetLabel)
         ) || null;
+      }
+
+      function getAvailableStellarAssetLabels(paymentRequired) {
+        if (!paymentRequired || !Array.isArray(paymentRequired.accepts)) {
+          return [];
+        }
+
+        const labels = [];
+        paymentRequired.accepts.forEach(requirement => {
+          const label = getStellarAssetLabel(requirement);
+          if (label && !labels.includes(label)) {
+            labels.push(label);
+          }
+        });
+        return labels;
       }
 
       function filterEndpoints(btn) {
@@ -1554,27 +1612,44 @@ function renderCatalogueClientScript() {
           const body = await readResponseBody(response);
 
           if (response.status === 402) {
+            const paymentRequiredHeader = response.headers.get('payment-required');
+            if (!paymentRequiredHeader) {
+              throw new Error('402 response is missing the PAYMENT-REQUIRED header.');
+            }
+
+            const paymentRequired = decodeBase64Json(paymentRequiredHeader);
+            const availableAssetLabels = getAvailableStellarAssetLabels(paymentRequired);
+            const paymentButtons = ['USDC', 'XLM']
+              .filter(label => availableAssetLabels.includes(label))
+              .map(label =>
+                '<button class="try-btn pay-freighter-btn" data-asset-label="' + label + '">' +
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
+                'Pay with ' + label +
+                '</button>'
+              )
+              .join('');
             const ctx = {
               method,
               url: finalUrl,
               fetchOpts,
               body,
               responseHeaders: normalizeHeaders(response.headers),
+              paymentRequired,
             };
 
             resultEl.innerHTML =
               '<div class="try-status status-402">&#9888; 402 Payment Required</div>' +
               '<pre>' + escapeHtmlClient(JSON.stringify(body, null, 2)) + '</pre>' +
-              '<div style="margin-top: 16px;">' +
-              '<button class="try-btn pay-freighter-btn">' +
-              '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
-              'Pay with Freighter' +
-              '</button>' +
+              '<div class="wallet-actions" style="margin-top: 16px;">' +
+              paymentButtons +
               '</div>';
 
-            const payBtn = resultEl.querySelector('.pay-freighter-btn');
-            payBtn.__x402ctx = ctx;
-            payBtn.addEventListener('click', function() { payWithFreighter(this, this.__x402ctx); });
+            resultEl.querySelectorAll('.pay-freighter-btn').forEach(payBtn => {
+              payBtn.__x402ctx = ctx;
+              payBtn.addEventListener('click', function() {
+                payWithFreighter(this, this.__x402ctx, this.dataset.assetLabel || '');
+              });
+            });
           } else {
             resultEl.innerHTML =
               '<div class="try-status status-200">&#10003; ' + response.status + ' OK</div>' +
@@ -1590,27 +1665,20 @@ function renderCatalogueClientScript() {
         btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try again';
       }
 
-      async function payWithFreighter(btn, ctx) {
+      async function payWithFreighter(btn, ctx, assetLabel) {
         const resultEl = btn.closest('.try-section').querySelector('.try-result');
+        const selectedAssetLabel = assetLabel || 'wallet';
 
         btn.disabled = true;
         btn.textContent = 'Reading payment requirements...';
         clearInlineError(btn);
 
         try {
-          const paymentRequiredHeader = ctx && ctx.responseHeaders
-            ? ctx.responseHeaders['payment-required']
-            : null;
-
-          if (!paymentRequiredHeader) {
-            throw new Error('402 response is missing the PAYMENT-REQUIRED header.');
-          }
-
-          const paymentRequired = decodeBase64Json(paymentRequiredHeader);
-          const stellarRequirement = findStellarRequirement(paymentRequired);
+          const paymentRequired = ctx && ctx.paymentRequired ? ctx.paymentRequired : null;
+          const stellarRequirement = findStellarRequirement(paymentRequired, assetLabel);
 
           if (!stellarRequirement) {
-            throw new Error('No Stellar payment option was returned for this endpoint.');
+            throw new Error('No Stellar payment option was returned for ' + selectedAssetLabel + '.');
           }
 
           btn.textContent = 'Connecting Freighter...';
@@ -1621,6 +1689,7 @@ function renderCatalogueClientScript() {
           const { address, httpClient } = await window.X402Freighter.connectAndCreateHttpClient({
             network: stellarRequirement.network,
             rpcUrls: STELLAR_RPC_URLS,
+            preferredAsset: stellarRequirement.asset,
           });
 
           if (!address) {
@@ -1678,7 +1747,7 @@ function renderCatalogueClientScript() {
         }
 
         btn.disabled = false;
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Retry Payment';
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Retry ' + selectedAssetLabel + ' Payment';
       }
 
       function escapeHtmlClient(str) {
