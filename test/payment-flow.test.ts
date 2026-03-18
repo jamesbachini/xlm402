@@ -240,9 +240,14 @@ test("catalogue HTML uses the v2 payment flow and bundled Freighter client", () 
   assert.match(html, /PAYMENT-REQUIRED/);
   assert.match(html, /createPaymentPayload/);
   assert.match(html, /X402Freighter/);
+  assert.match(html, /class="request-editor"/);
+  assert.match(html, /reasoning_effort&quot;: &quot;medium&quot;/);
   assert.doesNotMatch(html, /authModal\(/);
   assert.doesNotMatch(html, /openModal\(/);
   assert.doesNotMatch(html, /X-PAYMENT/);
+  assert.doesNotMatch(html, /reasoning_effort&quot;: &quot;minimal&quot;/);
+  assert.doesNotMatch(html, /Hello, world!/);
+  assert.doesNotMatch(html, /A beautiful sunset over the ocean/);
 });
 
 test("paid weather route accepts a v2 retry and returns settlement headers", async () => {

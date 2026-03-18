@@ -659,6 +659,31 @@ a { color: inherit; text-decoration: none; }
   overflow-x: auto;
 }
 
+.request-editor {
+  width: 100%;
+  min-height: 220px;
+  margin: 0;
+  padding: 20px;
+  border: 0;
+  background: transparent;
+  color: #b0c4de;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.7;
+  resize: vertical;
+  outline: none;
+}
+
+.request-editor::placeholder {
+  color: var(--text-tertiary);
+}
+
+.request-editor-help {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
 .code-block .kw { color: var(--purple); }
 .code-block .str { color: var(--accent); }
 .code-block .comment { color: var(--text-tertiary); }
@@ -1270,8 +1295,11 @@ export function renderIndexPage(catalog: PlatformCatalog) {
 
 function renderEndpointDetail(endpoint: PublishedEndpoint, baseUrl: string) {
   const params = endpoint.bodySchema ?? endpoint.querySchema ?? [];
-  const example = endpoint.requestBodyExample ?? endpoint.requestExample;
   const endpointId = `ep-${endpoint.id}-${endpoint.network}`.replace(/[^a-zA-Z0-9-]/g, "-");
+  const requestEditor = endpoint.requestBodyExample ?? endpoint.requestInputExample;
+  const requestEditorId = `request-${endpointId}`;
+  const requestEditorLabel = endpoint.method === "POST" ? "Example Request JSON" : "Example Query JSON";
+  const requestEditorFile = endpoint.method === "POST" ? "request.json" : "query.json";
 
   return `
     <details class="endpoint-card" data-network="${escapeHtml(endpoint.network)}">
@@ -1292,7 +1320,22 @@ function renderEndpointDetail(endpoint: PublishedEndpoint, baseUrl: string) {
         <p class="endpoint-desc">${escapeHtml(endpoint.description)}</p>
         <div class="endpoint-grid">
           <div>
-            <div class="endpoint-section-label">Example Request</div>
+            <div class="endpoint-section-label">${escapeHtml(requestEditorLabel)}</div>
+            ${
+              requestEditor
+                ? `
+            <div class="code-block">
+              <div class="code-block-header">
+                <div class="code-block-dot"></div>
+                <div class="code-block-dot"></div>
+                <div class="code-block-dot"></div>
+                <span class="code-block-label">${escapeHtml(requestEditorFile)}</span>
+              </div>
+              <textarea class="request-editor" id="${escapeHtml(requestEditorId)}" spellcheck="false">${escapeHtml(requestEditor)}</textarea>
+            </div>
+            <p class="request-editor-help">Edit this JSON before trying the endpoint. The paid retry uses the exact same payload.</p>
+            `
+                : `
             <div class="code-block">
               <div class="code-block-header">
                 <div class="code-block-dot"></div>
@@ -1300,7 +1343,19 @@ function renderEndpointDetail(endpoint: PublishedEndpoint, baseUrl: string) {
                 <div class="code-block-dot"></div>
                 <span class="code-block-label">request</span>
               </div>
-              <pre>${escapeHtml(example)}</pre>
+              <pre>${escapeHtml(endpoint.requestExample)}</pre>
+            </div>
+            `
+            }
+            <div class="endpoint-section-label" style="margin-top: 14px;">CLI Example</div>
+            <div class="code-block">
+              <div class="code-block-header">
+                <div class="code-block-dot"></div>
+                <div class="code-block-dot"></div>
+                <div class="code-block-dot"></div>
+                <span class="code-block-label">curl</span>
+              </div>
+              <pre>${escapeHtml(endpoint.requestExample)}</pre>
             </div>
           </div>
           <div>
@@ -1313,7 +1368,7 @@ function renderEndpointDetail(endpoint: PublishedEndpoint, baseUrl: string) {
           </div>
         </div>
         <div class="try-section">
-          <button class="try-btn" data-endpoint-id="${endpointId}" data-method="${escapeHtml(endpoint.method)}" data-path="${escapeHtml(endpoint.fullPath)}" data-base-url="${escapeHtml(baseUrl)}" onclick="tryEndpoint(this)">
+          <button class="try-btn" data-endpoint-id="${endpointId}" data-method="${escapeHtml(endpoint.method)}" data-path="${escapeHtml(endpoint.fullPath)}" data-base-url="${escapeHtml(baseUrl)}" data-request-editor-id="${escapeHtml(requestEditorId)}" onclick="tryEndpoint(this)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             Try with Freighter
           </button>
@@ -1350,7 +1405,77 @@ function renderCatalogueClientScript() {
       }
 
       async function readResponseBody(response) {
-        return response.json().catch(() => response.text());
+        const text = await response.text();
+
+        if (!text) {
+          return null;
+        }
+
+        try {
+          return JSON.parse(text);
+        } catch (_err) {
+          return text;
+        }
+      }
+
+      function isPlainObject(value) {
+        return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+      }
+
+      function readRequestJson(btn) {
+        const editorId = btn.dataset.requestEditorId;
+
+        if (!editorId) {
+          return {};
+        }
+
+        const editor = document.getElementById(editorId);
+        if (!editor) {
+          throw new Error('Request editor not found for this endpoint.');
+        }
+
+        let parsed;
+
+        try {
+          parsed = JSON.parse(editor.value);
+        } catch (err) {
+          throw new Error('Request JSON is invalid: ' + (err && err.message ? err.message : String(err)));
+        }
+
+        if (!isPlainObject(parsed)) {
+          throw new Error('Request JSON must be a JSON object.');
+        }
+
+        return parsed;
+      }
+
+      function buildQueryString(payload) {
+        const params = new URLSearchParams();
+
+        Object.entries(payload).forEach(([key, value]) => {
+          if (value === undefined || value === null || value === '') {
+            return;
+          }
+
+          if (Array.isArray(value)) {
+            const values = value
+              .filter(item => item !== undefined && item !== null && item !== '')
+              .map(item => String(item));
+
+            if (values.length > 0) {
+              params.set(key, values.join(','));
+            }
+            return;
+          }
+
+          if (typeof value === 'object') {
+            throw new Error('Query JSON values must be strings, numbers, booleans, or arrays.');
+          }
+
+          params.set(key, String(value));
+        });
+
+        return params.toString();
       }
 
       function clearInlineError(btn) {
@@ -1408,6 +1533,7 @@ function renderCatalogueClientScript() {
 
         try {
           const url = baseUrl + path;
+          const requestPayload = readRequestJson(btn);
           const fetchOpts = {
             method,
             headers: { 'Content-Type': 'application/json' },
@@ -1415,20 +1541,12 @@ function renderCatalogueClientScript() {
           let finalUrl = url;
 
           if (method === 'POST') {
-            if (path.includes('/chat/')) {
-              fetchOpts.body = JSON.stringify({ prompt: 'Hello, world!', reasoning_effort: 'minimal' });
-            } else if (path.includes('/image/')) {
-              fetchOpts.body = JSON.stringify({ prompt: 'A beautiful sunset over the ocean' });
-            }
+            fetchOpts.body = JSON.stringify(requestPayload);
           } else {
-            const sep = path.includes('?') ? '&' : '?';
-            const params = 'latitude=51.5072&longitude=-0.1276&timezone=auto';
-            if (path.includes('archive') || path.includes('history-summary')) {
-              finalUrl = url + sep + params + '&start_date=2026-03-01&end_date=2026-03-07&daily=temperature_2m_max,temperature_2m_min';
-            } else if (path.includes('forecast')) {
-              finalUrl = url + sep + params + '&daily=temperature_2m_max,temperature_2m_min&forecast_days=3';
-            } else {
-              finalUrl = url + sep + params;
+            const query = buildQueryString(requestPayload);
+            if (query) {
+              const sep = path.includes('?') ? '&' : '?';
+              finalUrl = url + sep + query;
             }
           }
 

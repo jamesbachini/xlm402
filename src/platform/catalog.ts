@@ -23,6 +23,7 @@ export type ServiceEndpoint = {
   availability: NetworkLabel[];
   priceByNetwork: Partial<Record<NetworkLabel, string>>;
   requestExample: string;
+  requestInputExample?: string;
   requestBodyExample?: string;
   querySchema?: string[];
   bodySchema?: string[];
@@ -106,6 +107,7 @@ const endpointDefinitions: ServiceEndpoint[] = [
       testnet: config.prices.weather,
     },
     requestExample: `curl "${config.publicBaseUrl}/weather/current?latitude=51.5072&longitude=-0.1276&timezone=auto"`,
+    requestInputExample: `{\n  "latitude": 51.5072,\n  "longitude": -0.1276,\n  "timezone": "auto"\n}`,
     querySchema: ["latitude", "longitude", "timezone=auto"],
   },
   {
@@ -121,6 +123,7 @@ const endpointDefinitions: ServiceEndpoint[] = [
       testnet: config.prices.weather,
     },
     requestExample: `curl "${config.publicBaseUrl}/weather/forecast?latitude=51.5072&longitude=-0.1276&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&forecast_days=5&timezone=auto"`,
+    requestInputExample: `{\n  "latitude": 51.5072,\n  "longitude": -0.1276,\n  "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",\n  "forecast_days": 5,\n  "timezone": "auto"\n}`,
     querySchema: [
       "latitude",
       "longitude",
@@ -143,6 +146,7 @@ const endpointDefinitions: ServiceEndpoint[] = [
       testnet: config.prices.weather,
     },
     requestExample: `curl "${config.publicBaseUrl}/weather/archive?latitude=40.7128&longitude=-74.0060&start_date=2026-03-01&end_date=2026-03-07&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto"`,
+    requestInputExample: `{\n  "latitude": 40.7128,\n  "longitude": -74.0060,\n  "start_date": "2026-03-01",\n  "end_date": "2026-03-07",\n  "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",\n  "timezone": "auto"\n}`,
     querySchema: [
       "latitude",
       "longitude",
@@ -166,6 +170,7 @@ const endpointDefinitions: ServiceEndpoint[] = [
       testnet: config.prices.weather,
     },
     requestExample: `curl "${config.publicBaseUrl}/weather/history-summary?latitude=40.7128&longitude=-74.0060&start_date=2026-03-01&end_date=2026-03-07&timezone=auto"`,
+    requestInputExample: `{\n  "latitude": 40.7128,\n  "longitude": -74.0060,\n  "start_date": "2026-03-01",\n  "end_date": "2026-03-07",\n  "timezone": "auto"\n}`,
     querySchema: [
       "latitude",
       "longitude",
@@ -191,7 +196,7 @@ const endpointDefinitions: ServiceEndpoint[] = [
       "prompt: string",
       "system?: string",
       "max_output_tokens?: integer 64..4096",
-      "reasoning_effort?: minimal | low | medium | high",
+      "reasoning_effort?: none | low | medium | high | xhigh",
       "metadata?: object<string,string>",
     ],
   },

@@ -2,13 +2,13 @@ import OpenAI from "openai";
 import { config } from "../config.js";
 import { HttpError } from "../utils/errors.js";
 
-const REASONING_EFFORTS = new Set(["minimal", "low", "medium", "high"]);
+const REASONING_EFFORTS = new Set(["none", "low", "medium", "high", "xhigh"]);
 
 export type ChatRequest = {
   prompt: string;
   system?: string;
   maxOutputTokens: number;
-  reasoningEffort: "minimal" | "low" | "medium" | "high";
+  reasoningEffort: "none" | "low" | "medium" | "high" | "xhigh";
   metadata: Record<string, string>;
 };
 

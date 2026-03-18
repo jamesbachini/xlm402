@@ -76,10 +76,11 @@ export const ARCHIVE_DAILY_FIELDS = new Set([
 ]);
 
 const CHAT_REASONING_EFFORTS = new Set<ChatRequest["reasoningEffort"]>([
-  "minimal",
+  "none",
   "low",
   "medium",
   "high",
+  "xhigh",
 ]);
 const IMAGE_SIZES = new Set<ImageRequest["size"]>([
   "auto",
