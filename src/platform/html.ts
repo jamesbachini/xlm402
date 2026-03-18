@@ -109,8 +109,245 @@ body {
   animation: drift 25s ease-in-out infinite alternate-reverse;
 }
 @keyframes drift {
-  0% { transform: translate(0, 0); }
-  100% { transform: translate(40px, -30px); }
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, -15px) scale(1.05); }
+  100% { transform: translate(40px, -30px) scale(1); }
+}
+
+/* ── Starfield canvas ── */
+#starfield {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ── Scroll reveal animations ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s var(--ease), transform 0.8s var(--ease);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+
+/* ── Animated gradient text ── */
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.hero h1 .gradient-text {
+  background: linear-gradient(135deg, var(--accent), var(--purple), var(--pink), var(--accent));
+  background-size: 300% 300%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 6s ease infinite;
+}
+
+/* ── Floating orbs in hero ── */
+.hero-orbs {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.hero-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.15;
+  animation: orb-float 12s ease-in-out infinite;
+}
+.hero-orb-1 {
+  width: 300px; height: 300px;
+  background: var(--accent);
+  top: -50px; left: 10%;
+  animation-duration: 14s;
+}
+.hero-orb-2 {
+  width: 250px; height: 250px;
+  background: var(--purple);
+  top: 20%; right: 5%;
+  animation-delay: -4s;
+  animation-duration: 18s;
+}
+.hero-orb-3 {
+  width: 200px; height: 200px;
+  background: var(--pink);
+  bottom: -30px; left: 30%;
+  animation-delay: -8s;
+  animation-duration: 16s;
+}
+@keyframes orb-float {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(30px, -20px) rotate(5deg); }
+  50% { transform: translate(-20px, 15px) rotate(-3deg); }
+  75% { transform: translate(15px, 25px) rotate(2deg); }
+}
+
+/* ── Hero badge shimmer ── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.hero-badge {
+  position: relative;
+  overflow: hidden;
+}
+.hero-badge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(125,226,209,0.15), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 3s linear infinite;
+}
+
+/* ── Mouse-tracking card glow ── */
+.service-card {
+  --mouse-x: 50%;
+  --mouse-y: 50%;
+}
+.service-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    600px circle at var(--mouse-x) var(--mouse-y),
+    rgba(125,226,209,0.06),
+    transparent 40%
+  );
+  opacity: 0;
+  transition: opacity 400ms;
+  pointer-events: none;
+  z-index: 1;
+}
+.service-card:hover::after {
+  opacity: 1;
+}
+
+/* ── Stats counter glow ── */
+.stat-value {
+  transition: color 0.3s;
+}
+.stat:hover .stat-value {
+  color: var(--accent);
+  text-shadow: 0 0 20px rgba(125,226,209,0.3);
+}
+
+/* ── How-It-Works step connectors ── */
+.how-grid {
+  position: relative;
+}
+@media (min-width: 769px) {
+  .how-step {
+    position: relative;
+    transition: transform 0.3s var(--ease), border-color 0.3s;
+  }
+  .how-step:hover {
+    transform: translateY(-6px);
+    border-color: var(--border-accent);
+  }
+}
+
+/* ── Animated step numbers ── */
+.how-step-number {
+  transition: all 0.3s var(--ease);
+}
+.how-step:hover .how-step-number {
+  background: rgba(125,226,209,0.2);
+  border-color: rgba(125,226,209,0.4);
+  transform: scale(1.15);
+  box-shadow: 0 0 20px rgba(125,226,209,0.15);
+}
+
+/* ── Code block typing cursor ── */
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.code-typing-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 16px;
+  background: var(--accent);
+  animation: blink-cursor 1s step-end infinite;
+  vertical-align: middle;
+  margin-left: 2px;
+}
+
+/* ── Network visualization in hero ── */
+.hero-network {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Pulse ring on hero badge ── */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+.hero-badge .dot::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-ring 2s ease-out infinite;
+}
+.hero-badge .dot {
+  position: relative;
+}
+
+/* ── Animated border on integration panel ── */
+@keyframes border-travel {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 200% 0%; }
+}
+.integration-panel {
+  position: relative;
+  background-clip: padding-box;
+}
+.integration-panel:hover {
+  border-color: rgba(125,226,209,0.25);
+  box-shadow: 0 0 40px rgba(125,226,209,0.05);
+}
+
+/* ── Button glow pulse ── */
+@keyframes btn-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(125,226,209,0.1); }
+  50% { box-shadow: 0 0 30px rgba(125,226,209,0.25); }
+}
+.btn-primary {
+  animation: btn-glow 3s ease-in-out infinite;
+}
+.btn-primary:hover {
+  animation: none;
+  box-shadow: 0 4px 30px rgba(125,226,209,0.3);
+}
+
+/* ── Smooth entrance for the whole page ── */
+@keyframes page-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+body {
+  animation: page-enter 0.6s ease-out;
 }
 
 /* Grid overlay */
@@ -1142,23 +1379,214 @@ function layout({
     <style>${sharedStyles}</style>
   </head>
   <body>
+    <canvas id="starfield"></canvas>
     <div class="bg-glow"></div>
     <div class="bg-grid"></div>
     ${body}
+    <script>
+    /* ── Starfield ── */
+    (function(){
+      const c = document.getElementById('starfield');
+      if (!c) return;
+      const ctx = c.getContext('2d');
+      let w, h, stars = [], mouse = {x: -1, y: -1};
+      const STAR_COUNT = Math.min(180, Math.floor(window.innerWidth * 0.12));
+      const COLORS = ['rgba(125,226,209,', 'rgba(167,139,250,', 'rgba(244,114,182,', 'rgba(240,246,252,'];
+
+      function resize() {
+        w = c.width = window.innerWidth;
+        h = c.height = window.innerHeight;
+      }
+
+      function initStars() {
+        stars = [];
+        for (let i = 0; i < STAR_COUNT; i++) {
+          stars.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            r: Math.random() * 1.5 + 0.3,
+            dx: (Math.random() - 0.5) * 0.15,
+            dy: (Math.random() - 0.5) * 0.15,
+            color: COLORS[Math.floor(Math.random() * COLORS.length)],
+            phase: Math.random() * Math.PI * 2,
+            twinkleSpeed: 0.01 + Math.random() * 0.02,
+          });
+        }
+      }
+
+      function draw(t) {
+        ctx.clearRect(0, 0, w, h);
+
+        for (let i = 0; i < stars.length; i++) {
+          const s = stars[i];
+          s.x += s.dx;
+          s.y += s.dy;
+          s.phase += s.twinkleSpeed;
+
+          if (s.x < -10) s.x = w + 10;
+          if (s.x > w + 10) s.x = -10;
+          if (s.y < -10) s.y = h + 10;
+          if (s.y > h + 10) s.y = -10;
+
+          const alpha = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(s.phase));
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fillStyle = s.color + alpha + ')';
+          ctx.fill();
+        }
+
+        /* Draw connections near mouse */
+        if (mouse.x > 0) {
+          const CONNECT_DIST = 120;
+          for (let i = 0; i < stars.length; i++) {
+            const s = stars[i];
+            const dx = s.x - mouse.x;
+            const dy = s.y - mouse.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < CONNECT_DIST) {
+              const a = (1 - dist / CONNECT_DIST) * 0.25;
+              ctx.beginPath();
+              ctx.moveTo(s.x, s.y);
+              ctx.lineTo(mouse.x, mouse.y);
+              ctx.strokeStyle = 'rgba(125,226,209,' + a + ')';
+              ctx.lineWidth = 0.5;
+              ctx.stroke();
+            }
+          }
+        }
+
+        /* Draw faint connections between nearby stars */
+        const STAR_CONNECT = 100;
+        for (let i = 0; i < stars.length; i++) {
+          for (let j = i + 1; j < stars.length; j++) {
+            const dx = stars[i].x - stars[j].x;
+            const dy = stars[i].y - stars[j].y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < STAR_CONNECT) {
+              const a = (1 - dist / STAR_CONNECT) * 0.06;
+              ctx.beginPath();
+              ctx.moveTo(stars[i].x, stars[i].y);
+              ctx.lineTo(stars[j].x, stars[j].y);
+              ctx.strokeStyle = 'rgba(125,226,209,' + a + ')';
+              ctx.lineWidth = 0.4;
+              ctx.stroke();
+            }
+          }
+        }
+
+        requestAnimationFrame(draw);
+      }
+
+      resize();
+      initStars();
+      requestAnimationFrame(draw);
+
+      window.addEventListener('resize', function() {
+        resize();
+        initStars();
+      });
+
+      document.addEventListener('mousemove', function(e) {
+        mouse.x = e.clientX;
+        mouse.y = e.clientY;
+      });
+
+      document.addEventListener('mouseleave', function() {
+        mouse.x = -1;
+        mouse.y = -1;
+      });
+    })();
+
+    /* ── Scroll reveal ── */
+    (function(){
+      const observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+      document.querySelectorAll('.reveal').forEach(function(el) {
+        observer.observe(el);
+      });
+    })();
+
+    /* ── Animated stat counters ── */
+    (function(){
+      const statObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            const el = entry.target;
+            const text = el.textContent.trim();
+            const num = parseInt(text, 10);
+            if (!isNaN(num) && num > 0 && num < 100 && !el.dataset.counted) {
+              el.dataset.counted = '1';
+              let current = 0;
+              const step = Math.max(1, Math.floor(num / 20));
+              const interval = setInterval(function() {
+                current += step;
+                if (current >= num) {
+                  current = num;
+                  clearInterval(interval);
+                }
+                el.textContent = current;
+              }, 40);
+            }
+          }
+        });
+      }, { threshold: 0.5 });
+
+      document.querySelectorAll('.stat-value').forEach(function(el) {
+        statObserver.observe(el);
+      });
+    })();
+
+    /* ── Card mouse glow tracking ── */
+    function updateCardGlow(e, card) {
+      const rect = card.getBoundingClientRect();
+      card.style.setProperty('--mouse-x', (e.clientX - rect.left) + 'px');
+      card.style.setProperty('--mouse-y', (e.clientY - rect.top) + 'px');
+    }
+    function resetCardGlow(card) {
+      card.style.setProperty('--mouse-x', '50%');
+      card.style.setProperty('--mouse-y', '50%');
+    }
+
+    /* ── Smooth parallax on scroll for hero orbs ── */
+    (function(){
+      let ticking = false;
+      window.addEventListener('scroll', function() {
+        if (!ticking) {
+          requestAnimationFrame(function() {
+            const scrollY = window.scrollY;
+            const orbs = document.querySelectorAll('.hero-orb');
+            orbs.forEach(function(orb, i) {
+              const speed = 0.05 + i * 0.03;
+              orb.style.transform = 'translateY(' + (scrollY * speed) + 'px)';
+            });
+            ticking = false;
+          });
+          ticking = true;
+        }
+      });
+    })();
+    </script>
   </body>
 </html>`;
 }
 
-function renderServiceCard(service: ServiceDefinition, catalog: PlatformCatalog) {
+function renderServiceCard(service: ServiceDefinition, catalog: PlatformCatalog, index = 0) {
   const endpoints = catalog.publishedEndpoints.filter(
     (ep) => ep.serviceId === service.id,
   );
   const networks = Array.from(new Set(endpoints.map((ep) => ep.network)));
   const prices = Array.from(new Set(endpoints.map((ep) => ep.priceUsd)));
   const accent = serviceAccentColor(service.id);
+  const delayClass = index <= 3 ? ` reveal-delay-${index + 1}` : "";
 
   return `
-    <a href="/services/${escapeHtml(service.id)}" class="service-card" style="--card-accent: ${accent}">
+    <a href="/services/${escapeHtml(service.id)}" class="service-card reveal${delayClass}" style="--card-accent: ${accent}" onmousemove="updateCardGlow(event, this)" onmouseleave="resetCardGlow(this)">
       <div class="service-card-icon" style="color: ${accent}; background: linear-gradient(135deg, ${accent}15, ${accent}08);">
         ${serviceIcon(service.id)}
       </div>
@@ -1190,23 +1618,30 @@ export function renderIndexPage(catalog: PlatformCatalog) {
       <div class="container">
         ${renderNav("home")}
 
-        <section class="hero">
-          <div class="hero-badge">
-            <span class="dot"></span>
-            Live on Stellar
+        <section class="hero" style="position: relative;">
+          <div class="hero-orbs">
+            <div class="hero-orb hero-orb-1"></div>
+            <div class="hero-orb hero-orb-2"></div>
+            <div class="hero-orb hero-orb-3"></div>
           </div>
-          <h1>The <span class="gradient-text">x402 service catalogue</span> for Stellar</h1>
-          <p class="hero-subtitle">
+          <div class="reveal">
+            <div class="hero-badge">
+              <span class="dot"></span>
+              Live on Stellar
+            </div>
+          </div>
+          <h1 class="reveal reveal-delay-1">The <span class="gradient-text">x402 service catalogue</span> for Stellar</h1>
+          <p class="hero-subtitle reveal reveal-delay-2">
             Browse premium APIs, pay with USDC or XLM on Stellar, and get instant access.
             Built for developers, AI agents, and automated workflows.
           </p>
-          <div class="hero-actions">
+          <div class="hero-actions reveal reveal-delay-3">
             <a class="btn btn-primary" href="#catalogue">Browse catalogue</a>
             <a class="btn" href="/docs">Read the docs</a>
           </div>
         </section>
 
-        <div class="stats-bar">
+        <div class="stats-bar reveal">
           <div class="stat">
             <div class="stat-value">${catalog.publishedEndpoints.length}</div>
             <div class="stat-label">Paid Endpoints</div>
@@ -1226,35 +1661,35 @@ export function renderIndexPage(catalog: PlatformCatalog) {
         </div>
 
         <section class="section" id="catalogue">
-          <div class="section-label">Service Catalogue</div>
-          <h2 class="section-title">Premium APIs, pay-per-call</h2>
-          <p class="section-subtitle">
+          <div class="section-label reveal">Service Catalogue</div>
+          <h2 class="section-title reveal reveal-delay-1">Premium APIs, pay-per-call</h2>
+          <p class="section-subtitle reveal reveal-delay-2">
             Each service is protected by the x402 payment protocol. Connect your Freighter wallet,
             call an endpoint, and pay only for what you use.
           </p>
           <div class="catalogue-grid">
-            ${liveServices.map((s) => renderServiceCard(s, catalog)).join("")}
+            ${liveServices.map((s, i) => renderServiceCard(s, catalog, i)).join("")}
           </div>
         </section>
 
         <section class="section">
-          <div class="section-label">How It Works</div>
-          <h2 class="section-title">Three steps to paid API access</h2>
-          <p class="section-subtitle">
+          <div class="section-label reveal">How It Works</div>
+          <h2 class="section-title reveal reveal-delay-1">Three steps to paid API access</h2>
+          <p class="section-subtitle reveal reveal-delay-2">
             The x402 protocol turns HTTP 402 into a native payment flow. No API keys, no subscriptions.
           </p>
           <div class="how-grid">
-            <div class="how-step">
+            <div class="how-step reveal reveal-delay-1">
               <div class="how-step-number">1</div>
               <h4>Call any endpoint</h4>
               <p>Make a standard HTTP request to any paid route. The server responds with 402 Payment Required and payment details.</p>
             </div>
-            <div class="how-step">
+            <div class="how-step reveal reveal-delay-2">
               <div class="how-step-number">2</div>
               <h4>Sign with Freighter</h4>
               <p>Your wallet creates a USDC or XLM payment on Stellar. The signed transaction is attached to the retry request.</p>
             </div>
-            <div class="how-step">
+            <div class="how-step reveal reveal-delay-3">
               <div class="how-step-number">3</div>
               <h4>Get your response</h4>
               <p>The facilitator verifies the payment and the server returns the API response. Instant, one-call settlement.</p>
@@ -1262,7 +1697,7 @@ export function renderIndexPage(catalog: PlatformCatalog) {
           </div>
         </section>
 
-        <section class="section">
+        <section class="section reveal">
           <div class="integration-panel">
             <div>
               <div class="section-label">For Developers & AI Agents</div>
