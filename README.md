@@ -4,11 +4,13 @@ Commercial x402 service platform for Stellar payments. The app now serves:
 
 - Mainnet weather routes at `/weather/*`
 - Testnet weather routes at `/testnet/weather/*`
+- Mainnet news routes at `/news/*`
+- Testnet news routes at `/testnet/news/*`
 - Mainnet AI inference at `/chat/respond`
 - Mainnet image generation at `/image/generate`
 - Human-facing pages at `/` and `/docs`
 
-One deployment can now expose both Stellar networks at once. Testnet is intentionally limited to the weather product so you can validate payment flows safely while keeping premium AI routes on mainnet only.
+One deployment can now expose both Stellar networks at once. Testnet includes the data products so you can validate payment flows safely while keeping premium AI routes on mainnet only.
 
 ## Route Shape
 
@@ -32,6 +34,17 @@ Paid weather:
 - `GET /testnet/weather/archive`
 - `GET /testnet/weather/history-summary`
 
+Paid news:
+
+- `GET /news/tech`
+- `GET /news/ai`
+- `GET /news/global`
+- `GET /news/economics`
+- `GET /testnet/news/tech`
+- `GET /testnet/news/ai`
+- `GET /testnet/news/global`
+- `GET /testnet/news/economics`
+
 Paid AI:
 
 - `POST /chat/respond`
@@ -41,7 +54,8 @@ Paid AI:
 
 ```bash
 cp .env.example .env
-# fill in mainnet/testnet pay-to addresses and facilitator URLs
+# edit config/app.json for pricing and public runtime config
+# keep secrets in .env
 # add OPENAI_API_KEY to enable /chat and /image
 
 npm install
@@ -50,39 +64,38 @@ npm run dev
 
 Default server URL is `http://localhost:3000`.
 
+## Config File
+
+Public, non-secret runtime settings now live in `config/app.json`. That includes:
+
+- pricing for `weather`, `news`, `chat`, and `image`
+- public base URL and platform name
+- request/cache timeouts and logging flag
+- Stellar RPC URLs
+- Open-Meteo upstream URLs
+- default OpenAI model names
+- mainnet/testnet pay-to addresses, facilitator URLs, and optional XLM contract addresses
+
+Edit that file directly for normal configuration changes.
+
 ## Environment
 
+`.env` is now for secrets and optional overrides.
+
 ```env
+APP_CONFIG_PATH=./config/app.json
 PORT=3000
 NODE_ENV=development
-PLATFORM_NAME=xlm402 services
-PUBLIC_BASE_URL=https://xlm402.com
 
-WEATHER_PRICE_USDC=0.01
-CHAT_PRICE_USDC=0.05
-IMAGE_PRICE_USDC=0.10
-
-MAINNET_PAY_TO_ADDRESS=G...
-MAINNET_FACILITATOR_URL=http://localhost:4022
 MAINNET_FACILITATOR_API_KEY=
-
-TESTNET_PAY_TO_ADDRESS=G...
-TESTNET_FACILITATOR_URL=http://localhost:4023
 TESTNET_FACILITATOR_API_KEY=
-
-OPEN_METEO_BASE_URL=https://api.open-meteo.com
-OPEN_METEO_ARCHIVE_BASE_URL=https://archive-api.open-meteo.com
 
 OPENAI_API_KEY=
 OPENAI_ORG_ID=
 OPENAI_PROJECT_ID=
-OPENAI_CHAT_MODEL=gpt-5.4
-OPENAI_IMAGE_MODEL=gpt-image-1.5
-
-REQUEST_TIMEOUT_MS=8000
-CACHE_TTL_SECONDS=60
-LOG_PAYMENTS=true
 ```
+
+You can still override any public value via env if needed, including prices such as `NEWS_PRICE_USDC`, but the default edit point is `config/app.json`.
 
 ## Example Requests
 
@@ -102,6 +115,12 @@ Unpaid testnet forecast request, also expected to return `402 Payment Required`:
 
 ```bash
 curl "http://localhost:3000/testnet/weather/forecast?latitude=52.2053&longitude=0.1218&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto"
+```
+
+Paid news request:
+
+```bash
+curl "http://localhost:3000/news/ai?limit=12&max_per_feed=6"
 ```
 
 Mainnet chat request:
@@ -132,6 +151,7 @@ curl -X POST "http://localhost:3000/image/generate" \
 ## Notes
 
 - Weather is available on both networks with the same request contracts.
+- News is available on both networks with the same request contracts.
 - Chat and image routes are published only when `OPENAI_API_KEY` is configured.
 - `/.well-known/x402` lists route-specific payment metadata for discovery clients.
 - The HTML overview and docs pages are rendered from the same shared catalog as the payment middleware.
@@ -141,6 +161,7 @@ curl -X POST "http://localhost:3000/image/generate" \
 git clone https://github.com/jamesbachini/xlm402
 ln -s ../sites-available/xlm402.com ./xlm402.com
 sudo ln -s ../sites-available/xlm402.com ./xlm402.com
+nano config/app.json
 nano .env
 sudo npm install -g typescript
 sudo npm install -g pm2

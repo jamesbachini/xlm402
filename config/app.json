@@ -1,0 +1,39 @@
+{
+  "port": 3000,
+  "platformName": "xlm402 services",
+  "publicBaseUrl": "https://xlm402.com",
+  "requestTimeoutMs": 8000,
+  "cacheTtlSeconds": 60,
+  "xlmPriceTtlSeconds": 30,
+  "logPayments": true,
+  "stellarRpcUrls": {
+    "mainnet": "https://rpc.lightsail.network/",
+    "testnet": "https://soroban-testnet.stellar.org"
+  },
+  "upstreams": {
+    "openMeteoBaseUrl": "https://api.open-meteo.com",
+    "openMeteoArchiveBaseUrl": "https://archive-api.open-meteo.com"
+  },
+  "prices": {
+    "weather": "0.01",
+    "news": "0.01",
+    "chat": "0.05",
+    "image": "0.10"
+  },
+  "openai": {
+    "chatModel": "gpt-5.4",
+    "imageModel": "gpt-image-1.5"
+  },
+  "networks": {
+    "mainnet": {
+      "payToAddress": "GA4D33Z3EOB6BU4DOXS2JMZK3JQRABN3ERMF3FK5JF5YPG3CEKRI7WM4",
+      "facilitatorUrl": "https://channels.openzeppelin.com/x402",
+      "xlmContractAddress": "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA"
+    },
+    "testnet": {
+      "payToAddress": "GA4D33Z3EOB6BU4DOXS2JMZK3JQRABN3ERMF3FK5JF5YPG3CEKRI7WM4",
+      "facilitatorUrl": "https://www.x402.org/facilitator",
+      "xlmContractAddress": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+    }
+  }
+}
