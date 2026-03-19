@@ -390,7 +390,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .logo-icon {
-  height: 40px;
+  height: 80px;
   width: auto;
 }
 
@@ -1299,7 +1299,6 @@ export function renderNav(activePage: string) {
     <nav class="nav">
       <a class="logo" href="/">
         <img class="logo-icon" src="/logo.svg" alt="xlm402 logo">
-        <span class="logo-text"><span class="logo-gradient">xlm402</span><span class="logo-dot-com">.com</span></span>
       </a>
       <button class="mobile-menu-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')" aria-label="Toggle menu">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
@@ -1607,7 +1606,7 @@ export function renderIndexPage(catalog: PlatformCatalog) {
           </div>
           <h1 class="reveal reveal-delay-1">x402 on Stellar</h1>
           <p class="hero-subtitle reveal reveal-delay-2">
-            SERVICES FOR THE MACHINE ECONOMY
+            SERVICES FOR THE MACHINE ECONOMY AT XLM402.COM
           </p>
           <div class="hero-actions reveal reveal-delay-3">
             <a class="btn btn-primary" href="#catalogue">Browse catalogue</a>
