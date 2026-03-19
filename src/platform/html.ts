@@ -488,6 +488,7 @@ a { color: inherit; text-decoration: none; }
   border-radius: 50%;
   background: var(--accent);
   animation: pulse-dot 2s ease-in-out infinite;
+  margin-right: 10px;
 }
 
 @keyframes pulse-dot {
@@ -503,11 +504,11 @@ a { color: inherit; text-decoration: none; }
   line-height: 1.05;
   max-width: 800px;
   margin: 0 auto 24px;
-  opacity: 0.1;
+  opacity: 0.1 !important;
 }
 
 .hero-subtitle {
-  font-size: 1.125rem;
+  font-size: 1rem;
   color: var(--text-secondary);
   max-width: 600px;
   margin: 0 auto 40px;
