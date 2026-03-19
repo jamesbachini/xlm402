@@ -1,3 +1,5 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -29,6 +31,9 @@ export async function createApp() {
     }
     next();
   });
+
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  app.use(express.static(path.join(__dirname, "..", "public")));
 
   app.use(publicRouter);
   app.use(await createX402Middleware());
