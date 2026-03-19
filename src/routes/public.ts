@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { config } from "../config.js";
 import { buildPlatformCatalog } from "../platform/catalog.js";
-import { renderDocsPage, renderIndexPage, renderServicePage } from "../platform/html.js";
+import { renderIndexPage, renderServicePage } from "../platform/html.js";
+import { renderDocsPage } from "../platform/docs.js";
 import { getFreighterBrowserBundle } from "../services/browserBundle.js";
 import { getFacilitatorSupported } from "../services/facilitator.js";
 
