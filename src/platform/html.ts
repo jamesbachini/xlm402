@@ -1,6 +1,42 @@
 import { config } from "../config.js";
-import { getUsdcAddress } from "@x402/stellar";
-import type { PlatformCatalog, PublishedEndpoint, ServiceDefinition } from "./catalog.js";
+import type { PlatformCatalog, ServiceDefinition } from "./catalog.js";
+import {
+  ARCHIVE_DAILY_FIELDS,
+  ARCHIVE_HOURLY_FIELDS,
+  FORECAST_DAILY_FIELDS,
+  FORECAST_HOURLY_FIELDS,
+} from "../utils/validate.js";
+import { NEWS_CATEGORIES } from "../services/newsFeeds.js";
+
+type FieldRow = {
+  name: string;
+  type: string;
+  required: string;
+  description: string;
+};
+
+type RouteDoc = {
+  method: "GET" | "POST";
+  path: string;
+  network: string;
+  priceUsd: string;
+  note?: string;
+};
+
+type EndpointDoc = {
+  id: string;
+  title: string;
+  method: "GET" | "POST";
+  description: string;
+  routes: RouteDoc[];
+  requestLabel: string;
+  requestExample: string;
+  responseExample: string;
+  requestFields: FieldRow[];
+  responseFields: FieldRow[];
+  notes?: string[];
+  supporting?: string;
+};
 
 function escapeHtml(value: string): string {
   return value
@@ -11,1345 +47,1418 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-function serviceIcon(id: string): string {
+function renderCodeBlock(label: string, code: string) {
+  return `
+    <div class="code-panel">
+      <div class="code-panel-header">
+        <span class="code-panel-title">${escapeHtml(label)}</span>
+      </div>
+      <pre><code>${escapeHtml(code)}</code></pre>
+    </div>
+  `;
+}
+
+function renderFieldTable(title: string, rows: FieldRow[]) {
+  return `
+    <div class="table-panel">
+      <div class="table-title">${escapeHtml(title)}</div>
+      <div class="table-wrap">
+        <table class="doc-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Type</th>
+              <th>Required</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (row) => `
+                  <tr>
+                    <td><code>${escapeHtml(row.name)}</code></td>
+                    <td>${escapeHtml(row.type)}</td>
+                    <td>${escapeHtml(row.required)}</td>
+                    <td>${escapeHtml(row.description)}</td>
+                  </tr>
+                `,
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderChips(values: string[]) {
+  return values.map((value) => `<span class="chip">${escapeHtml(value)}</span>`).join("");
+}
+
+function renderRouteMatrix(routes: RouteDoc[]) {
+  return `
+    <div class="route-list">
+      ${routes
+        .map(
+          (route) => `
+            <div class="route-row">
+              <span class="route-method route-method-${route.method.toLowerCase()}">${escapeHtml(route.method)}</span>
+              <code class="route-path">${escapeHtml(route.path)}</code>
+              <span class="route-meta">${escapeHtml(route.network)}</span>
+              <span class="route-meta">$${escapeHtml(route.priceUsd)} USD</span>
+              ${route.note ? `<span class="route-note">${escapeHtml(route.note)}</span>` : ""}
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderEndpointDoc(endpoint: EndpointDoc) {
+  return `
+    <article class="reference-card" id="${escapeHtml(endpoint.id)}">
+      <div class="reference-card-head">
+        <div>
+          <div class="eyebrow">${escapeHtml(endpoint.method)} Endpoint</div>
+          <h3>${escapeHtml(endpoint.title)}</h3>
+          <p>${escapeHtml(endpoint.description)}</p>
+        </div>
+      </div>
+      ${renderRouteMatrix(endpoint.routes)}
+      <div class="reference-columns">
+        <div>
+          ${renderFieldTable("Request", endpoint.requestFields)}
+          ${renderCodeBlock(endpoint.requestLabel, endpoint.requestExample)}
+        </div>
+        <div>
+          ${renderFieldTable("Response", endpoint.responseFields)}
+          ${renderCodeBlock("Response JSON", endpoint.responseExample)}
+        </div>
+      </div>
+      ${
+        endpoint.supporting
+          ? `<div class="support-panel">${endpoint.supporting}</div>`
+          : ""
+      }
+      ${
+        endpoint.notes?.length
+          ? `
+            <div class="note-list">
+              ${endpoint.notes.map((note) => `<div class="note-item">${escapeHtml(note)}</div>`).join("")}
+            </div>
+          `
+          : ""
+      }
+    </article>
+  `;
+}
+
+function serviceIcon(id: string) {
   switch (id) {
     case "weather":
-      return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+      return "WX";
     case "news":
-      return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20"/><path d="M5 2h11a2 2 0 0 1 2 2v18"/><path d="M5 2a2 2 0 0 0-2 2v13.5A2.5 2.5 0 0 0 5.5 20H18"/><path d="M8 7h6"/><path d="M8 11h8"/><path d="M8 15h5"/></svg>`;
+      return "NW";
     case "chat":
-      return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.4V20l3-2 3 2v-2.6c2.9-1.1 5-4 5-7.4a8 8 0 0 0-8-8z"/><circle cx="10" cy="10" r="1"/><circle cx="14" cy="10" r="1"/></svg>`;
+      return "AI";
     case "image":
-      return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`;
+      return "IM";
     default:
-      return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
+      return "API";
   }
 }
 
-function serviceAccentColor(id: string): string {
+function serviceAccent(id: string) {
   switch (id) {
     case "weather":
-      return "#7de2d1";
+      return "var(--accent-teal)";
     case "news":
-      return "#fbbf24";
+      return "var(--accent-orange)";
     case "chat":
-      return "#a78bfa";
+      return "var(--accent-blue)";
     case "image":
-      return "#f472b6";
+      return "var(--accent-red)";
     default:
-      return "#7de2d1";
+      return "var(--accent-teal)";
   }
+}
+
+function json(value: unknown) {
+  return JSON.stringify(value, null, 2);
+}
+
+function groupPublishedRoutes(catalog: PlatformCatalog, endpointId: string): RouteDoc[] {
+  return catalog.publishedEndpoints
+    .filter((endpoint) => endpoint.id === endpointId)
+    .map((endpoint) => ({
+      method: endpoint.method,
+      path: endpoint.fullPath,
+      network: endpoint.network,
+      priceUsd: endpoint.priceUsd,
+    }));
+}
+
+function optionalRoute(
+  method: "GET" | "POST",
+  path: string,
+  priceUsd: string,
+  note: string,
+): RouteDoc[] {
+  return [
+    {
+      method,
+      path,
+      network: "mainnet",
+      priceUsd,
+      note,
+    },
+  ];
+}
+
+function sharedEnvelopeExample(priceUsd: string, network: "mainnet" | "testnet", data: unknown) {
+  return {
+    network,
+    paid: true,
+    price_usd: priceUsd,
+    assets: ["USDC", "XLM"],
+    data,
+  };
+}
+
+function weatherCurrentExample() {
+  return sharedEnvelopeExample(config.prices.weather, "mainnet", {
+    latitude: 51.5072,
+    longitude: -0.1276,
+    generationtime_ms: 0.31,
+    utc_offset_seconds: 0,
+    timezone: "GMT",
+    timezone_abbreviation: "GMT",
+    elevation: 14,
+    current_units: {
+      time: "iso8601",
+      interval: "seconds",
+      temperature_2m: "°C",
+      relative_humidity_2m: "%",
+      apparent_temperature: "°C",
+      precipitation: "mm",
+      weather_code: "wmo code",
+      cloud_cover: "%",
+      pressure_msl: "hPa",
+      wind_speed_10m: "km/h",
+      wind_direction_10m: "°",
+      is_day: "",
+    },
+    current: {
+      time: "2026-03-19T12:00",
+      interval: 900,
+      temperature_2m: 13.2,
+      relative_humidity_2m: 68,
+      apparent_temperature: 12.4,
+      precipitation: 0,
+      weather_code: 3,
+      cloud_cover: 72,
+      pressure_msl: 1014.3,
+      wind_speed_10m: 16.1,
+      wind_direction_10m: 235,
+      is_day: 1,
+    },
+  });
+}
+
+function weatherForecastExample() {
+  return sharedEnvelopeExample(config.prices.weather, "mainnet", {
+    latitude: 51.5072,
+    longitude: -0.1276,
+    timezone: "GMT",
+    timezone_abbreviation: "GMT",
+    daily_units: {
+      time: "iso8601",
+      temperature_2m_max: "°C",
+      temperature_2m_min: "°C",
+      precipitation_sum: "mm",
+    },
+    daily: {
+      time: ["2026-03-19", "2026-03-20", "2026-03-21"],
+      temperature_2m_max: [14.8, 15.2, 12.9],
+      temperature_2m_min: [8.1, 7.5, 6.2],
+      precipitation_sum: [0.1, 1.9, 0],
+    },
+  });
+}
+
+function weatherArchiveExample() {
+  return sharedEnvelopeExample(config.prices.weather, "mainnet", {
+    latitude: 40.7128,
+    longitude: -74.006,
+    timezone: "America/New_York",
+    daily_units: {
+      time: "iso8601",
+      temperature_2m_max: "°C",
+      temperature_2m_min: "°C",
+      precipitation_sum: "mm",
+    },
+    daily: {
+      time: ["2026-03-01", "2026-03-02", "2026-03-03"],
+      temperature_2m_max: [11.2, 9.6, 10.8],
+      temperature_2m_min: [2.4, 1.1, 3.7],
+      precipitation_sum: [0, 4.3, 1.2],
+    },
+  });
+}
+
+function weatherHistorySummaryExample() {
+  return sharedEnvelopeExample(config.prices.weather, "mainnet", {
+    latitude: 40.7128,
+    longitude: -74.006,
+    start_date: "2026-03-01",
+    end_date: "2026-03-07",
+    timezone: "America/New_York",
+    summary: {
+      average_max_temp_c: 10.54,
+      average_min_temp_c: 2.47,
+      total_precipitation_mm: 8.9,
+      hottest_day: {
+        date: "2026-03-05",
+        temperature_2m_max: 14.6,
+      },
+      coldest_day: {
+        date: "2026-03-02",
+        temperature_2m_min: -0.8,
+      },
+    },
+  });
+}
+
+function newsExample() {
+  return sharedEnvelopeExample(config.prices.news, "mainnet", {
+    category: "ai",
+    requested_at: "2026-03-19T11:52:31.000Z",
+    story_count: 3,
+    source_count: 3,
+    sources: [
+      {
+        source: {
+          id: "openai-news",
+          name: "OpenAI News",
+          site_url: "https://openai.com/news",
+          feed_url: "https://openai.com/news/rss.xml",
+        },
+        item_count: 6,
+      },
+    ],
+    errors: [],
+    stories: [
+      {
+        title: "Example headline",
+        url: "https://example.com/story",
+        summary: "Normalized RSS summary text.",
+        published_at: "2026-03-19T10:30:00.000Z",
+        source: {
+          id: "openai-news",
+          name: "OpenAI News",
+          site_url: "https://openai.com/news",
+          feed_url: "https://openai.com/news/rss.xml",
+        },
+        category: "ai",
+      },
+    ],
+  });
+}
+
+function chatExample() {
+  return sharedEnvelopeExample(config.prices.chat, "mainnet", {
+    id: "resp_123",
+    model: config.openai.chatModel,
+    output_text: "Forecast quality now sold per call on Stellar.",
+    status: "completed",
+    incomplete_details: null,
+    usage: {
+      input_tokens: 42,
+      output_tokens: 18,
+      total_tokens: 60,
+    },
+  });
+}
+
+function imageExample() {
+  return sharedEnvelopeExample(config.prices.image, "mainnet", {
+    created: 1773922861,
+    model: config.openai.imageModel,
+    mime_type: "image/jpeg",
+    image_base64: "/9j/4AAQSkZJRgABAQAAAQABAAD...",
+    revised_prompt: "A cinematic satellite view of a storm front above the Atlantic.",
+    size: "1536x1024",
+    quality: "high",
+    background: "auto",
+  });
+}
+
+function getEndpointDocs(catalog: PlatformCatalog): EndpointDoc[] {
+  return [
+    {
+      id: "weather-current",
+      title: "Current weather",
+      method: "GET",
+      description:
+        "Returns current conditions from Open-Meteo for a single latitude and longitude.",
+      routes: groupPublishedRoutes(catalog, "weather-current"),
+      requestLabel: "Query JSON",
+      requestExample: json({
+        latitude: 51.5072,
+        longitude: -0.1276,
+        timezone: "auto",
+      }),
+      responseExample: json(weatherCurrentExample()),
+      requestFields: [
+        { name: "latitude", type: "number", required: "Yes", description: "Latitude between -90 and 90." },
+        { name: "longitude", type: "number", required: "Yes", description: "Longitude between -180 and 180." },
+        { name: "timezone", type: "string", required: "No", description: "IANA timezone or auto. Defaults to auto." },
+      ],
+      responseFields: [
+        { name: "network", type: "string", required: "Yes", description: "Published network label: mainnet or testnet." },
+        { name: "paid", type: "boolean", required: "Yes", description: "Always true for successful paid requests." },
+        { name: "price_usd", type: "string", required: "Yes", description: "USD price string used for the paid call." },
+        { name: "assets", type: "string[]", required: "Yes", description: "Accepted settlement assets, typically USDC and XLM." },
+        { name: "data.current_units", type: "object", required: "Yes", description: "Units for the selected current weather fields." },
+        { name: "data.current", type: "object", required: "Yes", description: "Current values for temperature, humidity, precipitation, pressure, wind, cloud cover, and daylight state." },
+      ],
+      notes: [
+        "Content is passed through from the Open-Meteo forecast API inside the shared paid-response envelope.",
+        "The current object always requests temperature, humidity, apparent temperature, precipitation, weather code, cloud cover, pressure, wind speed, wind direction, and is_day.",
+      ],
+    },
+    {
+      id: "weather-forecast",
+      title: "Forecast weather",
+      method: "GET",
+      description:
+        "Returns daily and optional hourly forecast data for up to 16 days.",
+      routes: groupPublishedRoutes(catalog, "weather-forecast"),
+      requestLabel: "Query JSON",
+      requestExample: json({
+        latitude: 51.5072,
+        longitude: -0.1276,
+        daily: "temperature_2m_max,temperature_2m_min,precipitation_sum",
+        hourly: "temperature_2m,wind_speed_10m",
+        forecast_days: 5,
+        timezone: "auto",
+      }),
+      responseExample: json(weatherForecastExample()),
+      requestFields: [
+        { name: "latitude", type: "number", required: "Yes", description: "Latitude between -90 and 90." },
+        { name: "longitude", type: "number", required: "Yes", description: "Longitude between -180 and 180." },
+        { name: "daily", type: "string", required: "No", description: "Comma-separated forecast daily fields. Defaults to max temp, min temp, and precipitation_sum." },
+        { name: "hourly", type: "string", required: "No", description: "Comma-separated forecast hourly fields." },
+        { name: "forecast_days", type: "integer", required: "No", description: "Optional range 1..16." },
+        { name: "timezone", type: "string", required: "No", description: "IANA timezone or auto. Defaults to auto." },
+      ],
+      responseFields: [
+        { name: "data.daily_units", type: "object", required: "Conditional", description: "Units object for daily arrays when daily fields are requested." },
+        { name: "data.daily", type: "object", required: "Conditional", description: "Daily forecast arrays keyed by each requested field." },
+        { name: "data.hourly_units", type: "object", required: "Conditional", description: "Units object for hourly arrays when hourly fields are requested." },
+        { name: "data.hourly", type: "object", required: "Conditional", description: "Hourly forecast arrays keyed by each requested field." },
+      ],
+      supporting: `
+        <div class="support-grid">
+          <div>
+            <div class="support-title">Forecast daily fields</div>
+            <div class="chip-row">${renderChips(Array.from(FORECAST_DAILY_FIELDS))}</div>
+          </div>
+          <div>
+            <div class="support-title">Forecast hourly fields</div>
+            <div class="chip-row">${renderChips(Array.from(FORECAST_HOURLY_FIELDS))}</div>
+          </div>
+        </div>
+      `,
+      notes: [
+        "Unsupported field names are rejected with 400 invalid_request.",
+        "If neither hourly nor daily is specified, the API still returns default daily summary fields.",
+      ],
+    },
+    {
+      id: "weather-archive",
+      title: "Archive weather",
+      method: "GET",
+      description:
+        "Returns historical weather data from the archive API for a bounded date range.",
+      routes: groupPublishedRoutes(catalog, "weather-archive"),
+      requestLabel: "Query JSON",
+      requestExample: json({
+        latitude: 40.7128,
+        longitude: -74.006,
+        start_date: "2026-03-01",
+        end_date: "2026-03-07",
+        daily: "temperature_2m_max,temperature_2m_min,precipitation_sum",
+        hourly: "temperature_2m,precipitation",
+        timezone: "auto",
+      }),
+      responseExample: json(weatherArchiveExample()),
+      requestFields: [
+        { name: "latitude", type: "number", required: "Yes", description: "Latitude between -90 and 90." },
+        { name: "longitude", type: "number", required: "Yes", description: "Longitude between -180 and 180." },
+        { name: "start_date", type: "string", required: "Yes", description: "Start date in YYYY-MM-DD format." },
+        { name: "end_date", type: "string", required: "Yes", description: "End date in YYYY-MM-DD format. Must be on or after start_date." },
+        { name: "daily", type: "string", required: "No", description: "Comma-separated archive daily fields. Defaults to max temp, min temp, and precipitation_sum." },
+        { name: "hourly", type: "string", required: "No", description: "Comma-separated archive hourly fields." },
+        { name: "timezone", type: "string", required: "No", description: "IANA timezone or auto. Defaults to auto." },
+      ],
+      responseFields: [
+        { name: "data.daily_units", type: "object", required: "Conditional", description: "Units object for daily arrays when daily fields are requested." },
+        { name: "data.daily", type: "object", required: "Conditional", description: "Historical daily arrays keyed by each requested field." },
+        { name: "data.hourly_units", type: "object", required: "Conditional", description: "Units object for hourly arrays when hourly fields are requested." },
+        { name: "data.hourly", type: "object", required: "Conditional", description: "Historical hourly arrays keyed by each requested field." },
+      ],
+      supporting: `
+        <div class="support-grid">
+          <div>
+            <div class="support-title">Archive daily fields</div>
+            <div class="chip-row">${renderChips(Array.from(ARCHIVE_DAILY_FIELDS))}</div>
+          </div>
+          <div>
+            <div class="support-title">Archive hourly fields</div>
+            <div class="chip-row">${renderChips(Array.from(ARCHIVE_HOURLY_FIELDS))}</div>
+          </div>
+        </div>
+      `,
+      notes: [
+        "Date ranges longer than 366 days are rejected.",
+        "The archive payload is passed through from Open-Meteo inside the standard paid-response envelope.",
+      ],
+    },
+    {
+      id: "weather-history-summary",
+      title: "History summary",
+      method: "GET",
+      description:
+        "Returns a compact custom summary built from archive daily weather fields.",
+      routes: groupPublishedRoutes(catalog, "weather-history-summary"),
+      requestLabel: "Query JSON",
+      requestExample: json({
+        latitude: 40.7128,
+        longitude: -74.006,
+        start_date: "2026-03-01",
+        end_date: "2026-03-07",
+        timezone: "auto",
+      }),
+      responseExample: json(weatherHistorySummaryExample()),
+      requestFields: [
+        { name: "latitude", type: "number", required: "Yes", description: "Latitude between -90 and 90." },
+        { name: "longitude", type: "number", required: "Yes", description: "Longitude between -180 and 180." },
+        { name: "start_date", type: "string", required: "Yes", description: "Start date in YYYY-MM-DD format." },
+        { name: "end_date", type: "string", required: "Yes", description: "End date in YYYY-MM-DD format." },
+        { name: "timezone", type: "string", required: "No", description: "IANA timezone or auto. Defaults to auto." },
+      ],
+      responseFields: [
+        { name: "data.latitude", type: "number", required: "Yes", description: "Echoed latitude." },
+        { name: "data.longitude", type: "number", required: "Yes", description: "Echoed longitude." },
+        { name: "data.start_date", type: "string", required: "Yes", description: "Resolved start date." },
+        { name: "data.end_date", type: "string", required: "Yes", description: "Resolved end date." },
+        { name: "data.summary", type: "object", required: "Yes", description: "Aggregated metrics including average temperatures, precipitation total, hottest day, and coldest day." },
+      ],
+      notes: [
+        "This endpoint does not expose raw hourly arrays; it computes a compact summary server-side.",
+      ],
+    },
+    {
+      id: "news-category",
+      title: "News by category",
+      method: "GET",
+      description:
+        "Returns normalized RSS/Atom stories blended from multiple feeds for one category.",
+      routes: groupPublishedRoutes(catalog, "news-ai").length
+        ? [
+            { method: "GET", path: "/news/:category", network: "mainnet", priceUsd: config.prices.news },
+            { method: "GET", path: "/testnet/news/:category", network: "testnet", priceUsd: config.prices.news },
+          ]
+        : [
+            { method: "GET", path: "/news/:category", network: "mainnet", priceUsd: config.prices.news },
+            { method: "GET", path: "/testnet/news/:category", network: "testnet", priceUsd: config.prices.news },
+          ],
+      requestLabel: "Query + path JSON",
+      requestExample: json({
+        category: "ai",
+        limit: 12,
+        max_per_feed: 6,
+      }),
+      responseExample: json(newsExample()),
+      requestFields: [
+        { name: "category", type: "path string", required: "Yes", description: `One of: ${NEWS_CATEGORIES.join(", ")}.` },
+        { name: "limit", type: "integer", required: "No", description: "Total stories to return, between 1 and 30. Defaults to 12." },
+        { name: "max_per_feed", type: "integer", required: "No", description: "Per-feed item cap, between 1 and 10. Defaults to 6." },
+      ],
+      responseFields: [
+        { name: "data.category", type: "string", required: "Yes", description: "Resolved category." },
+        { name: "data.requested_at", type: "string", required: "Yes", description: "ISO timestamp for the aggregation run." },
+        { name: "data.story_count", type: "integer", required: "Yes", description: "Count of returned stories after interleaving and dedupe." },
+        { name: "data.source_count", type: "integer", required: "Yes", description: "Number of feed sources that returned successfully." },
+        { name: "data.sources", type: "array", required: "Yes", description: "Per-source success metadata with item counts." },
+        { name: "data.errors", type: "array", required: "Yes", description: "Per-source error information for feeds that failed." },
+        { name: "data.stories", type: "array", required: "Yes", description: "Normalized stories containing title, URL, summary, published_at, source, and category." },
+      ],
+      supporting: `
+        <div>
+          <div class="support-title">Supported categories</div>
+          <div class="chip-row">${renderChips([...NEWS_CATEGORIES])}</div>
+        </div>
+      `,
+      notes: [
+        "Story lists are deduplicated by title and URL across all source feeds.",
+        "If no parseable stories remain after aggregation, the endpoint returns 502 upstream_error.",
+      ],
+    },
+    {
+      id: "chat-respond",
+      title: "Chat respond",
+      method: "POST",
+      description:
+        "Runs a paid text generation request against the configured GPT model.",
+      routes: groupPublishedRoutes(catalog, "chat-respond").length
+        ? groupPublishedRoutes(catalog, "chat-respond")
+        : optionalRoute("POST", "/chat/respond", config.prices.chat, "Published only when OPENAI_API_KEY is configured."),
+      requestLabel: "Request JSON",
+      requestExample: json({
+        prompt: "Write a landing page headline for a premium weather API on Stellar.",
+        system: "Be concise and commercial.",
+        max_output_tokens: 800,
+        reasoning_effort: "medium",
+        metadata: {
+          product: "weather-api",
+          channel: "docs-demo",
+        },
+      }),
+      responseExample: json(chatExample()),
+      requestFields: [
+        { name: "prompt", type: "string", required: "Yes", description: "Primary prompt, trimmed, max 32,000 characters." },
+        { name: "system", type: "string", required: "No", description: "Optional instructions, max 12,000 characters." },
+        { name: "max_output_tokens", type: "integer", required: "No", description: "Range 64..4096. Defaults to 800." },
+        { name: "reasoning_effort", type: "string", required: "No", description: "One of none, low, medium, high, xhigh. Defaults to medium." },
+        { name: "metadata", type: "object<string,string>", required: "No", description: "Up to 16 keys. Keys max 64 chars, values max 512 chars." },
+      ],
+      responseFields: [
+        { name: "data.id", type: "string", required: "Yes", description: "OpenAI response id." },
+        { name: "data.model", type: "string", required: "Yes", description: "Configured chat model." },
+        { name: "data.output_text", type: "string", required: "Yes", description: "Final rendered text output." },
+        { name: "data.status", type: "string", required: "Yes", description: "Responses API status." },
+        { name: "data.incomplete_details", type: "object | null", required: "Yes", description: "Incomplete response details when applicable." },
+        { name: "data.usage", type: "object | null", required: "Yes", description: "Token usage summary returned by OpenAI." },
+      ],
+      notes: [
+        "If AI services are disabled, this route returns 503 service_unavailable.",
+      ],
+    },
+    {
+      id: "image-generate",
+      title: "Image generate",
+      method: "POST",
+      description:
+        "Generates a single image and returns the base64 payload in JSON.",
+      routes: groupPublishedRoutes(catalog, "image-generate").length
+        ? groupPublishedRoutes(catalog, "image-generate")
+        : optionalRoute("POST", "/image/generate", config.prices.image, "Published only when OPENAI_API_KEY is configured."),
+      requestLabel: "Request JSON",
+      requestExample: json({
+        prompt: "A cinematic satellite view of a storm front above the Atlantic, premium editorial style",
+        size: "1536x1024",
+        quality: "high",
+        background: "auto",
+        output_format: "jpeg",
+        moderation: "auto",
+      }),
+      responseExample: json(imageExample()),
+      requestFields: [
+        { name: "prompt", type: "string", required: "Yes", description: "Prompt text, trimmed, max 32,000 characters." },
+        { name: "size", type: "string", required: "No", description: "One of auto, 1024x1024, 1536x1024, 1024x1536. Defaults to auto." },
+        { name: "quality", type: "string", required: "No", description: "One of auto, low, medium, high. Defaults to high." },
+        { name: "background", type: "string", required: "No", description: "One of auto, opaque, transparent. Defaults to auto." },
+        { name: "output_format", type: "string", required: "No", description: "One of jpeg, png, webp. Defaults to jpeg." },
+        { name: "moderation", type: "string", required: "No", description: "One of auto or low. Defaults to auto." },
+      ],
+      responseFields: [
+        { name: "data.created", type: "integer", required: "Yes", description: "Unix timestamp returned by the image generation API." },
+        { name: "data.model", type: "string", required: "Yes", description: "Configured image model." },
+        { name: "data.mime_type", type: "string", required: "Yes", description: "Derived from output_format." },
+        { name: "data.image_base64", type: "string", required: "Yes", description: "Base64-encoded image payload." },
+        { name: "data.revised_prompt", type: "string | null", required: "Yes", description: "Prompt rewrite returned by the upstream model when available." },
+        { name: "data.size", type: "string", required: "Yes", description: "Resolved size setting used for generation." },
+      ],
+      notes: [
+        "Transparent backgrounds require output_format png or webp.",
+      ],
+    },
+  ];
 }
 
 const sharedStyles = `
 :root {
-  color-scheme: dark;
-  --bg: #06090f;
-  --bg-elevated: #0c1219;
-  --surface: rgba(14, 22, 33, 0.7);
-  --surface-strong: rgba(18, 28, 42, 0.85);
-  --border: rgba(126, 170, 194, 0.12);
-  --border-hover: rgba(126, 170, 194, 0.25);
-  --border-accent: rgba(125, 226, 209, 0.3);
-  --text: #f0f6fc;
-  --text-secondary: #8b9eb7;
-  --text-tertiary: #5a6f87;
-  --accent: #7de2d1;
-  --accent-bright: #5eead4;
-  --accent-warm: #fbbf24;
-  --purple: #a78bfa;
-  --pink: #f472b6;
-  --radius-sm: 10px;
-  --radius-md: 16px;
+  --bg: #f7f2e8;
+  --bg-deep: #efe7d8;
+  --surface: rgba(255, 252, 246, 0.92);
+  --surface-strong: #fffdf8;
+  --surface-muted: #f3ecdf;
+  --border: #ddcfbb;
+  --border-strong: #cdb89a;
+  --text: #1f2a37;
+  --text-soft: #5d6a78;
+  --text-faint: #7f8b97;
+  --accent: #0f766e;
+  --accent-teal: #0f766e;
+  --accent-orange: #c46a1a;
+  --accent-blue: #2f6fed;
+  --accent-red: #b74434;
+  --shadow: 0 20px 50px rgba(84, 61, 33, 0.08);
   --radius-lg: 24px;
-  --radius-xl: 32px;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-display: 'Space Grotesk', var(--font-sans);
-  --font-brand: 'Quantico', var(--font-display);
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
-  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --radius-md: 18px;
+  --radius-sm: 12px;
+  --font-ui: "Manrope", "Segoe UI", sans-serif;
+  --font-display: "Newsreader", Georgia, serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
 }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+html {
+  scroll-behavior: smooth;
+}
 
 body {
-  font-family: var(--font-sans);
-  color: var(--text);
-  background: var(--bg);
+  margin: 0;
   min-height: 100vh;
-  line-height: 1.6;
-  overflow-x: hidden;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(196, 106, 26, 0.1), transparent 28%),
+    linear-gradient(180deg, #faf6ef 0%, #f3ecdf 100%);
+  font-family: var(--font-ui);
+  line-height: 1.65;
 }
 
-/* Ambient background */
-.bg-glow {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-.bg-glow::before {
-  content: '';
-  position: absolute;
-  top: -20%;
-  left: -10%;
-  width: 60%;
-  height: 60%;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(125, 226, 209, 0.08), transparent 65%);
-  animation: drift 20s ease-in-out infinite alternate;
-}
-.bg-glow::after {
-  content: '';
-  position: absolute;
-  bottom: -15%;
-  right: -10%;
-  width: 50%;
-  height: 50%;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(167, 139, 250, 0.06), transparent 65%);
-  animation: drift 25s ease-in-out infinite alternate-reverse;
-}
-@keyframes drift {
-  0% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(20px, -15px) scale(1.05); }
-  100% { transform: translate(40px, -30px) scale(1); }
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
-/* ── Starfield canvas ── */
-#starfield {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
+code,
+pre,
+kbd {
+  font-family: var(--font-mono);
 }
 
-/* ── Scroll reveal animations ── */
-.reveal {
-  opacity: 0;
-  transform: translateY(40px);
-  transition: opacity 0.8s var(--ease), transform 0.8s var(--ease);
-}
-.reveal.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-.reveal-delay-1 { transition-delay: 0.1s; }
-.reveal-delay-2 { transition-delay: 0.2s; }
-.reveal-delay-3 { transition-delay: 0.3s; }
-.reveal-delay-4 { transition-delay: 0.4s; }
-
-/* ── Animated gradient text ── */
-@keyframes gradient-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-/* ── Floating orbs in hero ── */
-.hero-orbs {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-.hero-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(60px);
-  opacity: 0.15;
-  animation: orb-float 12s ease-in-out infinite;
-}
-.hero-orb-1 {
-  width: 300px; height: 300px;
-  background: var(--accent);
-  top: -50px; left: 10%;
-  animation-duration: 14s;
-}
-.hero-orb-2 {
-  width: 250px; height: 250px;
-  background: var(--purple);
-  top: 20%; right: 5%;
-  animation-delay: -4s;
-  animation-duration: 18s;
-}
-.hero-orb-3 {
-  width: 200px; height: 200px;
-  background: var(--pink);
-  bottom: -30px; left: 30%;
-  animation-delay: -8s;
-  animation-duration: 16s;
-}
-@keyframes orb-float {
-  0%, 100% { transform: translate(0, 0) rotate(0deg); }
-  25% { transform: translate(30px, -20px) rotate(5deg); }
-  50% { transform: translate(-20px, 15px) rotate(-3deg); }
-  75% { transform: translate(15px, 25px) rotate(2deg); }
-}
-
-/* ── Hero badge shimmer ── */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-.hero-badge {
-  position: relative;
-  overflow: hidden;
-}
-.hero-badge::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(125,226,209,0.15), transparent);
-  background-size: 200% 100%;
-  animation: shimmer 3s linear infinite;
-}
-
-/* ── Mouse-tracking card glow ── */
-.service-card {
-  --mouse-x: 50%;
-  --mouse-y: 50%;
-}
-.service-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    600px circle at var(--mouse-x) var(--mouse-y),
-    rgba(125,226,209,0.06),
-    transparent 40%
-  );
-  opacity: 0;
-  transition: opacity 400ms;
-  pointer-events: none;
-  z-index: 1;
-}
-.service-card:hover::after {
-  opacity: 1;
-}
-
-/* ── Stats counter glow ── */
-.stat-value {
-  transition: color 0.3s;
-}
-.stat:hover .stat-value {
-  color: var(--accent);
-  text-shadow: 0 0 20px rgba(125,226,209,0.3);
-}
-
-/* ── How-It-Works step connectors ── */
-.how-grid {
-  position: relative;
-}
-@media (min-width: 769px) {
-  .how-step {
-    position: relative;
-    transition: transform 0.3s var(--ease), border-color 0.3s;
-  }
-  .how-step:hover {
-    transform: translateY(-6px);
-    border-color: var(--border-accent);
-  }
-}
-
-/* ── Animated step numbers ── */
-.how-step-number {
-  transition: all 0.3s var(--ease);
-}
-.how-step:hover .how-step-number {
-  background: rgba(125,226,209,0.2);
-  border-color: rgba(125,226,209,0.4);
-  transform: scale(1.15);
-  box-shadow: 0 0 20px rgba(125,226,209,0.15);
-}
-
-/* ── Code block typing cursor ── */
-@keyframes blink-cursor {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-.code-typing-cursor {
-  display: inline-block;
-  width: 8px;
-  height: 16px;
-  background: var(--accent);
-  animation: blink-cursor 1s step-end infinite;
-  vertical-align: middle;
-  margin-left: 2px;
-}
-
-/* ── Network visualization in hero ── */
-.hero-network {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* ── Pulse ring on hero badge ── */
-@keyframes pulse-ring {
-  0% { transform: scale(1); opacity: 0.6; }
-  100% { transform: scale(2.5); opacity: 0; }
-}
-.hero-badge .dot::after {
-  content: '';
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse-ring 2s ease-out infinite;
-}
-.hero-badge .dot {
-  position: relative;
-}
-
-/* ── Animated border on integration panel ── */
-@keyframes border-travel {
-  0% { background-position: 0% 0%; }
-  100% { background-position: 200% 0%; }
-}
-.integration-panel {
-  position: relative;
-  background-clip: padding-box;
-}
-.integration-panel:hover {
-  border-color: rgba(125,226,209,0.25);
-  box-shadow: 0 0 40px rgba(125,226,209,0.05);
-}
-
-/* ── Button glow pulse ── */
-@keyframes btn-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(125,226,209,0.1); }
-  50% { box-shadow: 0 0 30px rgba(125,226,209,0.25); }
-}
-.btn-primary {
-  animation: btn-glow 3s ease-in-out infinite;
-}
-.btn-primary:hover {
-  animation: none;
-  box-shadow: 0 4px 30px rgba(125,226,209,0.3);
-}
-
-/* ── Smooth entrance for the whole page ── */
-@keyframes page-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-body {
-  animation: page-enter 0.6s ease-out;
-}
-
-/* Grid overlay */
-.bg-grid {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent);
-}
-
-a { color: inherit; text-decoration: none; }
-
-.container {
-  width: min(1200px, 100% - 32px);
+.page-shell {
+  width: min(1440px, calc(100% - 32px));
   margin: 0 auto;
-  position: relative;
-  z-index: 1;
+  padding-bottom: 40px;
 }
 
-/* ── Navigation ── */
-.nav {
+.topbar {
+  position: sticky;
+  top: 16px;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 0;
-  gap: 16px;
+  gap: 20px;
+  margin: 16px 0 28px;
+  padding: 14px 18px;
+  border: 1px solid rgba(205, 184, 154, 0.7);
+  border-radius: 999px;
+  background: rgba(255, 252, 246, 0.82);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(84, 61, 33, 0.06);
 }
 
-.logo {
-  display: flex;
+.brand {
+  display: inline-flex;
   align-items: center;
   gap: 12px;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.1rem;
-  letter-spacing: -0.02em;
+  min-width: 0;
 }
 
-.logo-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, rgba(125, 226, 209, 0.15), rgba(167, 139, 250, 0.15));
-  border: 1px solid var(--border-accent);
+.brand-mark {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
   font-weight: 800;
-  letter-spacing: 0.05em;
-  color: var(--accent);
-  line-height: 1;
-  gap: 1px;
-  opacity: 0.2;
-}
-
-.logo-icon .logo-xlm {
-  font-size: 8px;
-  text-transform: uppercase;
   letter-spacing: 0.12em;
+  color: var(--surface-strong);
+  background: linear-gradient(135deg, var(--accent) 0%, #2f6fed 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
-.logo-icon .logo-402 {
-  font-size: 13px;
-  letter-spacing: 0.02em;
+.brand-copy {
+  min-width: 0;
 }
 
-.logo-text {
-  font-family: var(--font-brand);
-  font-weight: 700;
-  font-size: 1.1rem;
-  letter-spacing: -0.02em;
-  text-transform: none;
+.brand-copy strong {
+  display: block;
+  font-size: 0.95rem;
+  line-height: 1.1;
 }
 
-.logo-text .logo-gradient {
-  background: linear-gradient(135deg, var(--accent), var(--purple), var(--pink));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+.brand-copy span {
+  display: block;
+  color: var(--text-soft);
+  font-size: 0.82rem;
 }
 
-.logo-text .logo-dot-com {
-  color: var(--text);
-  font-size: 0.6em;
-  opacity: 0.5;
-}
-
-.nav-links {
+.topnav {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
-.nav-links a {
-  padding: 8px 16px;
+.topnav a {
+  padding: 9px 14px;
   border-radius: 999px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  transition: all 200ms var(--ease);
+  font-size: 0.9rem;
+  color: var(--text-soft);
 }
 
-.nav-links a:hover {
+.topnav a:hover,
+.topnav a.active {
   color: var(--text);
-  background: rgba(255,255,255,0.04);
+  background: var(--surface-muted);
 }
 
-.nav-links a.active {
-  color: var(--text);
-  background: rgba(255,255,255,0.06);
+.hero,
+.intro-panel,
+.content-panel,
+.reference-card,
+.service-card,
+.summary-card,
+.support-panel,
+.sidebar-card,
+.toc-card,
+.table-panel,
+.code-panel,
+.callout,
+.step-card {
+  border: 1px solid rgba(221, 207, 187, 0.92);
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 
-/* ── Hero ── */
 .hero {
-  padding: 80px 0 60px;
-  text-align: center;
+  padding: 52px;
+  border-radius: 36px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.9fr);
+  gap: 28px;
+  overflow: hidden;
 }
 
-.hero-badge {
+.eyebrow {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 16px 6px 8px;
-  border-radius: 999px;
-  background: rgba(125, 226, 209, 0.08);
-  border: 1px solid rgba(125, 226, 209, 0.2);
-  font-size: 0.8rem;
-  font-weight: 600;
+  margin-bottom: 14px;
   color: var(--accent);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  margin-bottom: 28px;
-  opacity: 0.6;
-}
-
-.hero-badge .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse-dot 2s ease-in-out infinite;
-  margin-right: 10px;
-}
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(125,226,209,0.4); }
-  50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(125,226,209,0); }
-}
-
-.hero h1 {
-  font-family: var(--font-brand);
-  font-size: clamp(2.5rem, 6vw, 4.5rem);
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  line-height: 1.05;
-  max-width: 800px;
-  margin: 0 auto 24px;
-  opacity: 0.1 !important;
-}
-
-.hero-subtitle {
   font-size: 0.8rem;
-  color: var(--text-secondary);
-  max-width: 600px;
-  margin: 0 auto 40px;
-  line-height: 1.7;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hero h1,
+.doc-title,
+.service-header h1 {
+  margin: 0 0 16px;
+  font-family: var(--font-display);
+  font-size: clamp(2.8rem, 5vw, 4.8rem);
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+}
+
+.hero p,
+.doc-lead,
+.service-header p {
+  margin: 0;
+  max-width: 58ch;
+  color: var(--text-soft);
+  font-size: 1.02rem;
 }
 
 .hero-actions {
   display: flex;
   gap: 12px;
-  justify-content: center;
+  margin-top: 26px;
   flex-wrap: wrap;
 }
 
-/* ── Buttons ── */
-.btn {
+.button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  border-radius: 999px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,0.04);
-  color: var(--text);
-  cursor: pointer;
-  transition: all 200ms var(--ease);
-  text-decoration: none;
-}
-
-.btn:hover {
-  transform: translateY(-1px);
-  border-color: var(--border-hover);
-  background: rgba(255,255,255,0.06);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.3);
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, rgba(125,226,209,0.2), rgba(167,139,250,0.15));
-  border-color: rgba(125,226,209,0.35);
-}
-
-.btn-primary:hover {
-  border-color: rgba(125,226,209,0.5);
-  box-shadow: 0 4px 24px rgba(125,226,209,0.15);
-}
-
-/* ── Stats bar ── */
-.stats-bar {
-  display: flex;
   justify-content: center;
-  gap: 48px;
-  padding: 40px 0;
-  margin: 20px 0 40px;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
-}
-
-.stat {
-  text-align: center;
-}
-
-.stat-value {
-  font-family: var(--font-display);
-  font-size: 1.5rem;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  border: 1px solid transparent;
   font-weight: 700;
-  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.button-primary {
+  color: white;
+  background: linear-gradient(135deg, var(--accent) 0%, #1d8f84 100%);
+}
+
+.button-secondary {
+  border-color: var(--border);
+  background: var(--surface-strong);
+}
+
+.hero-side {
+  display: grid;
+  gap: 14px;
+}
+
+.summary-card {
+  border-radius: 22px;
+  padding: 18px;
+}
+
+.summary-card strong {
+  display: block;
+  font-size: 1.65rem;
+  margin-bottom: 6px;
+}
+
+.summary-card span {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.section {
+  margin-top: 28px;
+}
+
+.section-head {
+  margin-bottom: 18px;
+}
+
+.section-head h2 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 3vw, 2.7rem);
+  letter-spacing: -0.03em;
+}
+
+.section-head p {
+  margin: 0;
+  color: var(--text-soft);
+  max-width: 70ch;
+}
+
+.service-grid,
+.summary-grid,
+.step-grid,
+.discovery-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.service-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.summary-grid,
+.step-grid,
+.discovery-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.service-card,
+.content-panel,
+.step-card,
+.callout {
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+
+.service-card-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.service-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: white;
+}
+
+.service-card h3,
+.content-panel h3,
+.reference-card h3,
+.step-card h3 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
   letter-spacing: -0.02em;
 }
 
-.stat-label {
-  font-size: 0.8rem;
-  color: var(--text-tertiary);
-  margin-top: 4px;
+.service-card p,
+.content-panel p,
+.reference-card p,
+.step-card p,
+.sidebar-card p,
+.toc-card p {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.meta-row,
+.chip-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.meta-row {
+  margin-top: 16px;
+}
+
+.chip,
+.meta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  border: 1px solid rgba(205, 184, 154, 0.8);
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.docs-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 220px;
+  gap: 24px;
+  align-items: start;
+}
+
+.docs-sidebar,
+.docs-toc {
+  position: sticky;
+  top: 98px;
+}
+
+.sidebar-card,
+.toc-card {
+  border-radius: 24px;
+  padding: 20px;
+}
+
+.sidebar-card + .sidebar-card,
+.toc-card + .toc-card {
+  margin-top: 16px;
+}
+
+.sidebar-title,
+.toc-title,
+.support-title,
+.table-title {
+  margin: 0 0 12px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.sidebar-links,
+.toc-links {
+  display: grid;
+  gap: 6px;
+}
+
+.sidebar-links a,
+.toc-links a {
+  padding: 8px 10px;
+  border-radius: 12px;
+  color: var(--text-soft);
+  font-size: 0.92rem;
+}
+
+.sidebar-links a:hover,
+.toc-links a:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.sidebar-group {
+  margin-top: 12px;
+}
+
+.sidebar-group-label {
+  margin: 14px 0 8px;
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.docs-content {
+  min-width: 0;
+}
+
+.doc-header {
+  padding: 34px;
+  border-radius: 32px;
+  border: 1px solid rgba(221, 207, 187, 0.92);
+  background: linear-gradient(135deg, rgba(255, 252, 246, 0.98), rgba(243, 236, 223, 0.92));
+  box-shadow: var(--shadow);
+}
+
+.doc-title {
+  font-size: clamp(2.6rem, 4vw, 4rem);
+}
+
+.doc-section {
+  margin-top: 22px;
+  padding: 26px;
+  border-radius: 28px;
+  border: 1px solid rgba(221, 207, 187, 0.92);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.doc-section h2 {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: clamp(1.9rem, 3vw, 2.4rem);
+  letter-spacing: -0.03em;
+}
+
+.doc-section > p {
+  margin: 0 0 18px;
+  color: var(--text-soft);
+}
+
+.reference-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.reference-card {
+  border-radius: 24px;
+  padding: 24px;
+}
+
+.reference-card-head {
+  margin-bottom: 14px;
+}
+
+.route-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.route-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+}
+
+.route-method {
+  min-width: 54px;
+  justify-content: center;
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 800;
   letter-spacing: 0.08em;
 }
 
-/* ── Section ── */
-.section {
-  padding: 60px 0;
+.route-method-get {
+  background: var(--accent-teal);
 }
 
-.section-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 16px;
+.route-method-post {
+  background: var(--accent-orange);
 }
 
-.section-title {
-  font-family: var(--font-display);
-  font-size: clamp(1.75rem, 3vw, 2.5rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  margin-bottom: 12px;
-}
-
-.section-subtitle {
-  color: var(--text-secondary);
-  max-width: 600px;
-  margin-bottom: 36px;
-  line-height: 1.7;
-}
-
-/* ── Service Cards (catalogue grid) ── */
-.catalogue-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 20px;
-}
-
-.service-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  padding: 28px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  backdrop-filter: blur(16px);
-  transition: all 300ms var(--ease);
-  cursor: pointer;
-  text-decoration: none;
-  overflow: hidden;
-}
-
-.service-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--card-accent);
-  opacity: 0;
-  transition: opacity 300ms var(--ease);
-}
-
-.service-card:hover {
-  border-color: var(--border-hover);
-  transform: translateY(-4px);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(125,226,209,0.08);
-}
-
-.service-card:hover::before {
-  opacity: 1;
-}
-
-.service-card-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 20px;
-  border: 1px solid var(--border);
-  color: var(--card-accent);
-  background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
-}
-
-.service-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.service-card h3 {
-  font-family: var(--font-display);
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.service-card-desc {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  line-height: 1.65;
-  flex: 1;
-  margin-bottom: 20px;
-}
-
-.service-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: auto;
-}
-
-.tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,0.03);
-  color: var(--text-secondary);
-}
-
-.tag-network {
-  border-color: rgba(125,226,209,0.25);
-  color: var(--accent);
-  background: rgba(125,226,209,0.06);
-}
-
-.tag-price {
-  border-color: rgba(251,191,36,0.25);
-  color: var(--accent-warm);
-  background: rgba(251,191,36,0.06);
-}
-
-.service-card-arrow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  transition: color 200ms var(--ease);
-}
-
-.service-card:hover .service-card-arrow {
-  color: var(--accent);
-}
-
-.service-card-arrow svg {
-  transition: transform 200ms var(--ease);
-}
-
-.service-card:hover .service-card-arrow svg {
-  transform: translateX(4px);
-}
-
-/* ── How It Works ── */
-.how-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 20px;
-}
-
-.how-step {
-  padding: 24px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.how-step-number {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  font-family: var(--font-display);
-  font-size: 0.85rem;
-  font-weight: 700;
-  background: rgba(125,226,209,0.1);
-  border: 1px solid rgba(125,226,209,0.2);
-  color: var(--accent);
-  margin-bottom: 16px;
-}
-
-.how-step h4 {
-  font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.how-step p {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-/* ── Integration panel ── */
-.integration-panel {
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  padding: 36px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 40px;
-  align-items: center;
-}
-
-.integration-panel h3 {
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin-bottom: 12px;
-}
-
-.integration-panel p {
-  color: var(--text-secondary);
-  line-height: 1.7;
-  margin-bottom: 20px;
-}
-
-.integration-panel ul {
-  list-style: none;
+.route-path {
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.integration-panel li {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
   font-size: 0.9rem;
-  color: var(--text-secondary);
+  color: var(--text);
 }
 
-.integration-panel li::before {
-  content: '';
-  margin-top: 6px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  flex-shrink: 0;
+.route-meta,
+.route-note {
+  color: var(--text-soft);
+  font-size: 0.82rem;
 }
 
-.code-block {
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: #080d14;
+.reference-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.table-panel,
+.code-panel,
+.support-panel {
+  border-radius: 18px;
   overflow: hidden;
 }
 
-.code-block-header {
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.code-block-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-tertiary);
-}
-
-.code-block-label {
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  margin-left: 4px;
-}
-
-.code-block pre {
-  margin: 0;
-  padding: 20px;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  line-height: 1.7;
-  color: #b0c4de;
+.table-wrap {
   overflow-x: auto;
 }
 
-.request-editor {
+.doc-table {
   width: 100%;
-  min-height: 220px;
+  border-collapse: collapse;
+  min-width: 620px;
+}
+
+.doc-table th,
+.doc-table td {
+  padding: 12px 14px;
+  border-top: 1px solid rgba(221, 207, 187, 0.92);
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.9rem;
+}
+
+.doc-table thead th {
+  border-top: 0;
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.code-panel-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(221, 207, 187, 0.92);
+  background: rgba(243, 236, 223, 0.75);
+}
+
+.code-panel-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.code-panel pre {
   margin: 0;
-  padding: 20px;
-  border: 0;
-  background: transparent;
-  color: #b0c4de;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  line-height: 1.7;
-  resize: vertical;
-  outline: none;
+  padding: 16px;
+  overflow: auto;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  background: #fffdf8;
 }
 
-.request-editor::placeholder {
-  color: var(--text-tertiary);
+.support-panel {
+  margin-top: 18px;
+  padding: 18px;
 }
 
-.request-editor-help {
-  margin-top: 10px;
-  font-size: 0.8rem;
-  color: var(--text-tertiary);
+.support-grid {
+  display: grid;
+  gap: 16px;
 }
 
-.code-block .kw { color: var(--purple); }
-.code-block .str { color: var(--accent); }
-.code-block .comment { color: var(--text-tertiary); }
-.code-block .num { color: var(--accent-warm); }
+.note-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
 
-/* ── Footer ── */
+.note-item {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(15, 118, 110, 0.06);
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.callout {
+  background: linear-gradient(135deg, rgba(15, 118, 110, 0.08), rgba(255, 252, 246, 0.95));
+}
+
+.step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+
 .footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 32px 0 48px;
-  border-top: 1px solid var(--border);
-  margin-top: 40px;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
-}
-
-.footer-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 0.875rem;
-  color: var(--text-tertiary);
+  margin-top: 30px;
+  padding: 24px 0 10px;
+  color: var(--text-soft);
+  font-size: 0.9rem;
 }
 
 .footer-links {
   display: flex;
-  gap: 20px;
-  font-size: 0.85rem;
+  gap: 14px;
+  flex-wrap: wrap;
 }
 
-.footer-links a {
-  color: var(--text-tertiary);
-  transition: color 200ms;
+.service-header {
+  padding: 34px;
+  border-radius: 32px;
+  border: 1px solid rgba(221, 207, 187, 0.92);
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 
-.footer-links a:hover { color: var(--text); }
+.service-header-top {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
 
-/* ── Service Detail Page ── */
 .back-link {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-bottom: 24px;
-  transition: color 200ms;
+  margin-bottom: 18px;
+  color: var(--text-soft);
+  font-size: 0.92rem;
 }
 
-.back-link:hover { color: var(--text); }
-
-.service-hero {
-  padding: 48px 0 32px;
-}
-
-.service-hero-inner {
-  display: flex;
-  align-items: flex-start;
-  gap: 20px;
-}
-
-.service-hero-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.service-hero h1 {
-  font-family: var(--font-display);
-  font-size: clamp(1.75rem, 3vw, 2.5rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  margin-bottom: 8px;
-}
-
-.service-hero p {
-  color: var(--text-secondary);
-  max-width: 600px;
-  line-height: 1.7;
-}
-
-.service-highlights {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 16px;
-}
-
-/* ── Endpoint Cards ── */
-.endpoints-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.endpoint-card {
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  overflow: hidden;
-  transition: border-color 200ms;
-}
-
-.endpoint-card:hover {
-  border-color: var(--border-hover);
-}
-
-.endpoint-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px;
-  cursor: pointer;
-  gap: 16px;
-}
-
-.endpoint-card-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
-}
-
-.method-badge {
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  letter-spacing: 0.06em;
-  flex-shrink: 0;
-}
-
-.method-GET {
-  background: rgba(125,226,209,0.12);
-  color: var(--accent);
-  border: 1px solid rgba(125,226,209,0.2);
-}
-
-.method-POST {
-  background: rgba(167,139,250,0.12);
-  color: var(--purple);
-  border: 1px solid rgba(167,139,250,0.2);
-}
-
-.endpoint-path {
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.endpoint-card-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.endpoint-expand {
-  width: 28px;
-  height: 28px;
+.inline-code {
+  padding: 2px 6px;
   border-radius: 8px;
-  display: grid;
-  place-items: center;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  transition: all 200ms;
+  background: var(--surface-muted);
 }
 
-.endpoint-card[open] .endpoint-expand {
-  transform: rotate(180deg);
-}
-
-.endpoint-card-body {
-  padding: 0 24px 24px;
-  border-top: 1px solid var(--border);
-}
-
-.endpoint-desc {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  padding-top: 20px;
-  margin-bottom: 20px;
-  line-height: 1.65;
-}
-
-.endpoint-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.endpoint-section-label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-  margin-bottom: 10px;
-}
-
-.endpoint-params {
-  list-style: none;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.endpoint-params li {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(255,255,255,0.02);
-}
-
-.try-section {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border);
-}
-
-.try-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  border: 1px solid rgba(125,226,209,0.3);
-  background: rgba(125,226,209,0.08);
-  color: var(--accent);
-  cursor: pointer;
-  transition: all 200ms var(--ease);
-  font-family: var(--font-sans);
-}
-
-.wallet-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.try-btn:hover {
-  background: rgba(125,226,209,0.15);
-  border-color: rgba(125,226,209,0.5);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(125,226,209,0.1);
-}
-
-.try-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.try-result {
-  margin-top: 16px;
-  display: none;
-}
-
-.try-result.visible { display: block; }
-
-.try-result pre {
-  margin: 0;
-  padding: 16px;
-  border-radius: var(--radius-sm);
-  background: #080d14;
-  border: 1px solid var(--border);
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  line-height: 1.6;
-  color: #b0c4de;
-  overflow-x: auto;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.try-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 10px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.try-status.status-402 { color: var(--accent-warm); }
-.try-status.status-200 { color: var(--accent); }
-.try-status.status-error { color: var(--pink); }
-
-/* ── Docs page extras ── */
-.filter-bar {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 24px;
-}
-
-.filter-btn {
-  padding: 8px 16px;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,0.03);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 200ms;
-  font-family: var(--font-sans);
-}
-
-.filter-btn:hover {
-  border-color: var(--border-hover);
-  color: var(--text);
-}
-
-.filter-btn[aria-pressed="true"] {
-  border-color: rgba(125,226,209,0.35);
-  background: rgba(125,226,209,0.08);
-  color: var(--accent);
-}
-
-/* ── Responsive ── */
-@media (max-width: 768px) {
-  .hero { padding: 48px 0 40px; }
-  .hero h1 { font-size: 2.2rem; }
-  .stats-bar { gap: 24px; }
-  .catalogue-grid { grid-template-columns: 1fr; }
-  .integration-panel {
-    grid-template-columns: 1fr;
-    padding: 24px;
+@media (max-width: 1180px) {
+  .docs-layout {
+    grid-template-columns: 240px minmax(0, 1fr);
   }
-  .endpoint-grid { grid-template-columns: 1fr; }
-  .nav { flex-wrap: wrap; }
-  .nav-links { display: none; }
-  .mobile-menu-toggle { display: flex; }
-  .endpoint-card-header { flex-direction: column; align-items: flex-start; }
-  .endpoint-card-right { width: 100%; justify-content: space-between; }
-  .how-grid { grid-template-columns: 1fr; }
-}
 
-@media (max-width: 480px) {
-  .container { width: calc(100% - 24px); }
-  .service-card { padding: 20px; }
-  .hero h1 { font-size: 1.9rem; }
-  .hero-subtitle { font-size: 1rem; }
-  .service-hero-inner { flex-direction: column; }
-}
-
-/* ── Hamburger / Mobile Menu ── */
-.mobile-menu-toggle {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: rgba(255,255,255,0.03);
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-@media (max-width: 768px) {
-  .mobile-menu-toggle { display: flex; }
-  .nav-links {
+  .docs-toc {
     display: none;
-    position: absolute;
-    top: 100%;
-    right: 0;
-    flex-direction: column;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: 8px;
-    min-width: 180px;
-    z-index: 100;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
   }
-  .nav-links.open { display: flex; }
-  .nav { position: relative; }
+}
+
+@media (max-width: 920px) {
+  .hero,
+  .reference-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-sidebar,
+  .docs-toc {
+    position: static;
+  }
+
+  .topbar {
+    position: static;
+    border-radius: 28px;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-shell {
+    width: min(100% - 20px, 1440px);
+  }
+
+  .hero,
+  .doc-header,
+  .doc-section,
+  .service-header,
+  .service-card,
+  .content-panel,
+  .reference-card {
+    padding: 20px;
+    border-radius: 22px;
+  }
+
+  .hero h1,
+  .doc-title,
+  .service-header h1 {
+    font-size: 2.4rem;
+  }
+
+  .topbar {
+    padding: 16px;
+  }
 }
 `;
 
-function renderNav(activePage: string) {
+function renderNav(activePage: "home" | "docs" | "service") {
   return `
-    <nav class="nav">
-      <a class="logo" href="/">
-        <div class="logo-icon"><span class="logo-xlm">xlm</span><span class="logo-402">402</span></div>
-        <span class="logo-text"><span class="logo-gradient">xlm402</span><span class="logo-dot-com">.com</span></span>
+    <header class="topbar">
+      <a class="brand" href="/">
+        <span class="brand-mark">X402</span>
+        <span class="brand-copy">
+          <strong>xlm402 services</strong>
+          <span>Catalogue and documentation portal</span>
+        </span>
       </a>
-      <button class="mobile-menu-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')" aria-label="Toggle menu">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-      </button>
-      <div class="nav-links">
+      <nav class="topnav">
         <a href="/"${activePage === "home" ? ' class="active"' : ""}>Catalogue</a>
-        <a href="/docs"${activePage === "docs" ? ' class="active"' : ""}>Docs</a>
-        <a href="/api/catalog">API</a>
-        <a href="/.well-known/x402">x402</a>
+        <a href="/docs"${activePage === "docs" ? ' class="active"' : ""}>Documentation</a>
+        <a href="/api/catalog">API JSON</a>
+        <a href="/.well-known/x402">x402 Manifest</a>
         <a href="https://github.com/jamesbachini/xlm402" target="_blank" rel="noopener noreferrer">GitHub</a>
-      </div>
-    </nav>
+      </nav>
+    </header>
   `;
 }
 
 function renderFooter() {
   return `
     <footer class="footer">
-      <div class="footer-left">
-        <span>xlm402.com</span>
-        <span>&middot;</span>
-        <span>x402 services on Stellar</span>
-      </div>
+      <div>xlm402 services on Stellar with machine-readable discovery and x402 payments.</div>
       <div class="footer-links">
-        <a href="/docs">Docs</a>
-        <a href="/api/catalog">API</a>
+        <a href="/docs">Documentation</a>
+        <a href="/api/catalog">API JSON</a>
+        <a href="/supported">Supported</a>
         <a href="/health">Health</a>
-        <a href="https://github.com/jamesbachini/xlm402" target="_blank" rel="noopener noreferrer">GitHub</a>
       </div>
     </footer>
   `;
@@ -1373,358 +1482,131 @@ function layout({
     <meta name="description" content="${escapeHtml(description)}" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Quantico:wght@700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-    <script type="module" src="/vendor/freighter-x402.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Manrope:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,600;6..72,700&display=swap" rel="stylesheet" />
     <style>${sharedStyles}</style>
   </head>
   <body>
-    <canvas id="starfield"></canvas>
-    <div class="bg-glow"></div>
-    <div class="bg-grid"></div>
     ${body}
-    <script>
-    /* ── Starfield ── */
-    (function(){
-      const c = document.getElementById('starfield');
-      if (!c) return;
-      const ctx = c.getContext('2d');
-      let w, h, stars = [], mouse = {x: -1, y: -1};
-      const STAR_COUNT = Math.min(180, Math.floor(window.innerWidth * 0.12));
-      const COLORS = ['rgba(125,226,209,', 'rgba(167,139,250,', 'rgba(244,114,182,', 'rgba(240,246,252,'];
-
-      function resize() {
-        w = c.width = window.innerWidth;
-        h = c.height = window.innerHeight;
-      }
-
-      function initStars() {
-        stars = [];
-        for (let i = 0; i < STAR_COUNT; i++) {
-          stars.push({
-            x: Math.random() * w,
-            y: Math.random() * h,
-            r: Math.random() * 1.5 + 0.3,
-            dx: (Math.random() - 0.5) * 0.15,
-            dy: (Math.random() - 0.5) * 0.15,
-            color: COLORS[Math.floor(Math.random() * COLORS.length)],
-            phase: Math.random() * Math.PI * 2,
-            twinkleSpeed: 0.01 + Math.random() * 0.02,
-          });
-        }
-      }
-
-      function draw(t) {
-        ctx.clearRect(0, 0, w, h);
-
-        for (let i = 0; i < stars.length; i++) {
-          const s = stars[i];
-          s.x += s.dx;
-          s.y += s.dy;
-          s.phase += s.twinkleSpeed;
-
-          if (s.x < -10) s.x = w + 10;
-          if (s.x > w + 10) s.x = -10;
-          if (s.y < -10) s.y = h + 10;
-          if (s.y > h + 10) s.y = -10;
-
-          const alpha = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(s.phase));
-          ctx.beginPath();
-          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-          ctx.fillStyle = s.color + alpha + ')';
-          ctx.fill();
-        }
-
-        /* Draw connections near mouse */
-        if (mouse.x > 0) {
-          const CONNECT_DIST = 120;
-          for (let i = 0; i < stars.length; i++) {
-            const s = stars[i];
-            const dx = s.x - mouse.x;
-            const dy = s.y - mouse.y;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist < CONNECT_DIST) {
-              const a = (1 - dist / CONNECT_DIST) * 0.25;
-              ctx.beginPath();
-              ctx.moveTo(s.x, s.y);
-              ctx.lineTo(mouse.x, mouse.y);
-              ctx.strokeStyle = 'rgba(125,226,209,' + a + ')';
-              ctx.lineWidth = 0.5;
-              ctx.stroke();
-            }
-          }
-        }
-
-        /* Draw faint connections between nearby stars */
-        const STAR_CONNECT = 100;
-        for (let i = 0; i < stars.length; i++) {
-          for (let j = i + 1; j < stars.length; j++) {
-            const dx = stars[i].x - stars[j].x;
-            const dy = stars[i].y - stars[j].y;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            if (dist < STAR_CONNECT) {
-              const a = (1 - dist / STAR_CONNECT) * 0.06;
-              ctx.beginPath();
-              ctx.moveTo(stars[i].x, stars[i].y);
-              ctx.lineTo(stars[j].x, stars[j].y);
-              ctx.strokeStyle = 'rgba(125,226,209,' + a + ')';
-              ctx.lineWidth = 0.4;
-              ctx.stroke();
-            }
-          }
-        }
-
-        requestAnimationFrame(draw);
-      }
-
-      resize();
-      initStars();
-      requestAnimationFrame(draw);
-
-      window.addEventListener('resize', function() {
-        resize();
-        initStars();
-      });
-
-      document.addEventListener('mousemove', function(e) {
-        mouse.x = e.clientX;
-        mouse.y = e.clientY;
-      });
-
-      document.addEventListener('mouseleave', function() {
-        mouse.x = -1;
-        mouse.y = -1;
-      });
-    })();
-
-    /* ── Scroll reveal ── */
-    (function(){
-      const observer = new IntersectionObserver(function(entries) {
-        entries.forEach(function(entry) {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-          }
-        });
-      }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
-
-      document.querySelectorAll('.reveal').forEach(function(el) {
-        observer.observe(el);
-      });
-    })();
-
-    /* ── Animated stat counters ── */
-    (function(){
-      const statObserver = new IntersectionObserver(function(entries) {
-        entries.forEach(function(entry) {
-          if (entry.isIntersecting) {
-            const el = entry.target;
-            const text = el.textContent.trim();
-            const num = parseInt(text, 10);
-            if (!isNaN(num) && num > 0 && num < 100 && !el.dataset.counted) {
-              el.dataset.counted = '1';
-              let current = 0;
-              const step = Math.max(1, Math.floor(num / 20));
-              const interval = setInterval(function() {
-                current += step;
-                if (current >= num) {
-                  current = num;
-                  clearInterval(interval);
-                }
-                el.textContent = current;
-              }, 40);
-            }
-          }
-        });
-      }, { threshold: 0.5 });
-
-      document.querySelectorAll('.stat-value').forEach(function(el) {
-        statObserver.observe(el);
-      });
-    })();
-
-    /* ── Card mouse glow tracking ── */
-    function updateCardGlow(e, card) {
-      const rect = card.getBoundingClientRect();
-      card.style.setProperty('--mouse-x', (e.clientX - rect.left) + 'px');
-      card.style.setProperty('--mouse-y', (e.clientY - rect.top) + 'px');
-    }
-    function resetCardGlow(card) {
-      card.style.setProperty('--mouse-x', '50%');
-      card.style.setProperty('--mouse-y', '50%');
-    }
-
-    /* ── Smooth parallax on scroll for hero orbs ── */
-    (function(){
-      let ticking = false;
-      window.addEventListener('scroll', function() {
-        if (!ticking) {
-          requestAnimationFrame(function() {
-            const scrollY = window.scrollY;
-            const orbs = document.querySelectorAll('.hero-orb');
-            orbs.forEach(function(orb, i) {
-              const speed = 0.05 + i * 0.03;
-              orb.style.transform = 'translateY(' + (scrollY * speed) + 'px)';
-            });
-            ticking = false;
-          });
-          ticking = true;
-        }
-      });
-    })();
-    </script>
   </body>
 </html>`;
 }
 
-function renderServiceCard(service: ServiceDefinition, catalog: PlatformCatalog, index = 0) {
-  const endpoints = catalog.publishedEndpoints.filter(
-    (ep) => ep.serviceId === service.id,
-  );
-  const networks = Array.from(new Set(endpoints.map((ep) => ep.network)));
-  const prices = Array.from(new Set(endpoints.map((ep) => ep.priceUsd)));
-  const accent = serviceAccentColor(service.id);
-  const delayClass = index <= 3 ? ` reveal-delay-${index + 1}` : "";
+function renderDiscoveryCards() {
+  return `
+    <div class="discovery-grid">
+      <div class="content-panel">
+        <div class="eyebrow">Discovery</div>
+        <h3><code>/api/catalog</code></h3>
+        <p>Platform summary with services, published routes, prices, and response metadata for automation and dashboard clients.</p>
+      </div>
+      <div class="content-panel">
+        <div class="eyebrow">x402</div>
+        <h3><code>/.well-known/x402</code></h3>
+        <p>Canonical x402 manifest with route-level payment options, pay-to addresses, and facilitator metadata.</p>
+      </div>
+      <div class="content-panel">
+        <div class="eyebrow">Facilitators</div>
+        <h3><code>/supported</code></h3>
+        <p>Pass-through facilitator capability check for both Stellar networks so clients can inspect enabled schemes.</p>
+      </div>
+      <div class="content-panel">
+        <div class="eyebrow">Health</div>
+        <h3><code>/health</code></h3>
+        <p>Deployment health, service availability, network list, asset support, and OpenAI status.</p>
+      </div>
+    </div>
+  `;
+}
+
+function renderServiceSummaryCard(service: ServiceDefinition, catalog: PlatformCatalog) {
+  const endpoints = catalog.publishedEndpoints.filter((endpoint) => endpoint.serviceId === service.id);
+  const networks = Array.from(new Set(endpoints.map((endpoint) => endpoint.network)));
+  const prices = Array.from(new Set(endpoints.map((endpoint) => endpoint.priceUsd)));
 
   return `
-    <a href="/services/${escapeHtml(service.id)}" class="service-card reveal${delayClass}" style="--card-accent: ${accent}" onmousemove="updateCardGlow(event, this)" onmouseleave="resetCardGlow(this)">
-      <div class="service-card-icon" style="color: ${accent}; background: linear-gradient(135deg, ${accent}15, ${accent}08);">
-        ${serviceIcon(service.id)}
+    <a class="service-card" href="/services/${escapeHtml(service.id)}">
+      <div class="service-card-head">
+        <span class="service-icon" style="background:${serviceAccent(service.id)}">${escapeHtml(serviceIcon(service.id))}</span>
+        <div>
+          <h3>${escapeHtml(service.name)}</h3>
+          <p>${escapeHtml(service.tagline)}</p>
+        </div>
       </div>
-      <div class="service-card-header">
-        <h3>${escapeHtml(service.name)}</h3>
-      </div>
-      <p class="service-card-desc">${escapeHtml(service.tagline)}</p>
-      <div class="service-card-meta">
-        ${networks.map((n) => `<span class="tag tag-network">${escapeHtml(n)}</span>`).join("")}
-        ${prices.map((p) => `<span class="tag tag-price">from $${escapeHtml(p)} USD</span>`).join("")}
-        <span class="tag">${endpoints.length} endpoint${endpoints.length === 1 ? "" : "s"}</span>
-      </div>
-      <div class="service-card-arrow">
-        <span>Explore &amp; purchase</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      <div class="meta-row">
+        ${networks.map((network) => `<span class="meta-pill">${escapeHtml(network)}</span>`).join("")}
+        ${prices.map((price) => `<span class="meta-pill">$${escapeHtml(price)} USD</span>`).join("")}
+        <span class="meta-pill">${endpoints.length} route${endpoints.length === 1 ? "" : "s"}</span>
       </div>
     </a>
   `;
 }
 
-export function renderIndexPage(catalog: PlatformCatalog) {
-  const liveServices = catalog.services;
+function renderServiceReference(serviceId: string, catalog: PlatformCatalog) {
+  const endpoints = getEndpointDocs(catalog).filter((endpoint) => endpoint.id.startsWith(serviceId));
+  return endpoints.map((endpoint) => renderEndpointDoc(endpoint)).join("");
+}
 
+export function renderIndexPage(catalog: PlatformCatalog) {
   return layout({
-    title: "xlm402.com | x402 Service Catalogue on Stellar",
+    title: "xlm402 services | API catalogue on Stellar",
     description:
-      "Browse and purchase premium API services with x402 payments on Stellar. Weather intelligence, AI inference, and image generation.",
+      "Pay-per-call APIs on Stellar with x402 discovery, route metadata, and a full documentation portal.",
     body: `
-      <div class="container">
+      <div class="page-shell">
         ${renderNav("home")}
 
-        <section class="hero" style="position: relative;">
-          <div class="hero-orbs">
-            <div class="hero-orb hero-orb-1"></div>
-            <div class="hero-orb hero-orb-2"></div>
-            <div class="hero-orb hero-orb-3"></div>
-          </div>
-          <div class="reveal">
-            <div class="hero-badge">
-              <span class="dot"></span>
-              LIVE ON THE STELLAR NETWORK
+        <section class="hero">
+          <div>
+            <div class="eyebrow">Documentation-first platform</div>
+            <h1>Paid APIs on Stellar with a real docs portal.</h1>
+            <p>
+              Browse the live catalogue, inspect machine-readable discovery endpoints, and jump into setup guides,
+              x402 payment flow details, MCP integration instructions, and JSON request/response reference docs.
+            </p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="/docs">Open documentation</a>
+              <a class="button button-secondary" href="/api/catalog">Inspect API JSON</a>
             </div>
           </div>
-          <h1 class="reveal reveal-delay-1">x402 on Stellar</h1>
-          <p class="hero-subtitle reveal reveal-delay-2">
-            SERVICES FOR THE MACHINE ECONOMY
-          </p>
-          <div class="hero-actions reveal reveal-delay-3">
-            <a class="btn btn-primary" href="#catalogue">Browse catalogue</a>
-            <a class="btn" href="/docs">Read the docs</a>
-          </div>
-        </section>
-
-        <div class="stats-bar reveal">
-          <div class="stat">
-            <div class="stat-value">${catalog.publishedEndpoints.length}</div>
-            <div class="stat-label">Paid Endpoints</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value">${liveServices.length}</div>
-            <div class="stat-label">Services</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value">2</div>
-            <div class="stat-label">Networks</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value">USDC or XLM</div>
-            <div class="stat-label">Payment Assets</div>
-          </div>
-        </div>
-
-        <section class="section" id="catalogue">
-          <div class="section-label reveal">Service Catalogue</div>
-          <h2 class="section-title reveal reveal-delay-1">Premium APIs, pay-per-call</h2>
-          <p class="section-subtitle reveal reveal-delay-2">
-            Each service is protected by the x402 payment protocol. Connect your Freighter wallet,
-            call an endpoint, and pay only for what you use.
-          </p>
-          <div class="catalogue-grid">
-            ${liveServices.map((s, i) => renderServiceCard(s, catalog, i)).join("")}
+          <div class="hero-side">
+            <div class="summary-card">
+              <strong>${catalog.publishedEndpoints.length}</strong>
+              <span>Published paid routes across mainnet and testnet</span>
+            </div>
+            <div class="summary-card">
+              <strong>${catalog.services.length}</strong>
+              <span>Service families with shared x402 discovery metadata</span>
+            </div>
+            <div class="summary-card">
+              <strong>USDC + XLM</strong>
+              <span>Stellar settlement assets exposed in route manifests and 402 responses</span>
+            </div>
           </div>
         </section>
 
         <section class="section">
-          <div class="section-label reveal">How It Works</div>
-          <h2 class="section-title reveal reveal-delay-1">Three steps to paid API access</h2>
-          <p class="section-subtitle reveal reveal-delay-2">
-            The x402 protocol turns HTTP 402 into a native payment flow. No API keys, no subscriptions.
-          </p>
-          <div class="how-grid">
-            <div class="how-step reveal reveal-delay-1">
-              <div class="how-step-number">1</div>
-              <h4>Call any endpoint</h4>
-              <p>Make a standard HTTP request to any paid route. The server responds with 402 Payment Required and payment details.</p>
-            </div>
-            <div class="how-step reveal reveal-delay-2">
-              <div class="how-step-number">2</div>
-              <h4>Sign with Freighter</h4>
-              <p>Your wallet creates a USDC or XLM payment on Stellar. The signed transaction is attached to the retry request.</p>
-            </div>
-            <div class="how-step reveal reveal-delay-3">
-              <div class="how-step-number">3</div>
-              <h4>Get your response</h4>
-              <p>The facilitator verifies the payment and the server returns the API response. Instant, one-call settlement.</p>
-            </div>
+          <div class="section-head">
+            <div class="eyebrow">Catalogue</div>
+            <h2>Live services</h2>
+            <p>
+              The catalogue stays focused on the paid products. The new documentation portal separates setup,
+              integration guidance, and API reference into a proper docs experience.
+            </p>
+          </div>
+          <div class="service-grid">
+            ${catalog.services.map((service) => renderServiceSummaryCard(service, catalog)).join("")}
           </div>
         </section>
 
-        <section class="section reveal">
-          <div class="integration-panel">
-            <div>
-              <div class="section-label">For Developers & AI Agents</div>
-              <h3>Machine-readable discovery</h3>
-              <p>Every service publishes structured metadata so AI agents and automation can discover, evaluate, and purchase API access programmatically.</p>
-              <ul>
-                <li><code>/.well-known/x402</code> &mdash; Full payment metadata for all routes</li>
-                <li><code>/api/catalog</code> &mdash; Service definitions, pricing, and schemas</li>
-                <li><code>/supported</code> &mdash; Facilitator capabilities per network</li>
-                <li><code>/health</code> &mdash; Platform availability and status</li>
-              </ul>
-            </div>
-            <div class="code-block">
-              <div class="code-block-header">
-                <div class="code-block-dot"></div>
-                <div class="code-block-dot"></div>
-                <div class="code-block-dot"></div>
-                <span class="code-block-label">discovery.sh</span>
-              </div>
-              <pre><span class="comment"># Discover available services</span>
-<span class="kw">curl</span> ${escapeHtml(config.publicBaseUrl)}/.well-known/x402
-
-<span class="comment"># Machine-readable catalogue</span>
-<span class="kw">curl</span> ${escapeHtml(config.publicBaseUrl)}/api/catalog
-
-<span class="comment"># Check facilitator support</span>
-<span class="kw">curl</span> ${escapeHtml(config.publicBaseUrl)}/supported</pre>
-            </div>
+        <section class="section">
+          <div class="section-head">
+            <div class="eyebrow">Developer surfaces</div>
+            <h2>Machine-readable discovery endpoints</h2>
+            <p>
+              Human docs and JSON discovery stay aligned so agents, dashboards, and SDKs can discover the same contract.
+            </p>
           </div>
+          ${renderDiscoveryCards()}
         </section>
 
         ${renderFooter()}
@@ -1733,586 +1615,474 @@ export function renderIndexPage(catalog: PlatformCatalog) {
   });
 }
 
-function renderEndpointDetail(endpoint: PublishedEndpoint, baseUrl: string) {
-  const params = endpoint.bodySchema ?? endpoint.querySchema ?? [];
-  const endpointId = `ep-${endpoint.id}-${endpoint.network}`.replace(/[^a-zA-Z0-9-]/g, "-");
-  const requestEditor = endpoint.requestBodyExample ?? endpoint.requestInputExample;
-  const requestEditorId = `request-${endpointId}`;
-  const requestEditorLabel = endpoint.method === "POST" ? "Example Request JSON" : "Example Query JSON";
-  const requestEditorFile = endpoint.method === "POST" ? "request.json" : "query.json";
-
-  return `
-    <details class="endpoint-card" data-network="${escapeHtml(endpoint.network)}">
-      <summary class="endpoint-card-header">
-        <div class="endpoint-card-left">
-          <span class="method-badge method-${escapeHtml(endpoint.method)}">${escapeHtml(endpoint.method)}</span>
-          <span class="endpoint-path">${escapeHtml(endpoint.fullPath)}</span>
-        </div>
-        <div class="endpoint-card-right">
-          <span class="tag tag-network">${escapeHtml(endpoint.network)}</span>
-          <span class="tag tag-price">$${escapeHtml(endpoint.priceUsd)} USD</span>
-          <div class="endpoint-expand">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-          </div>
-        </div>
-      </summary>
-      <div class="endpoint-card-body">
-        <p class="endpoint-desc">${escapeHtml(endpoint.description)}</p>
-        <div class="endpoint-grid">
-          <div>
-            <div class="endpoint-section-label">${escapeHtml(requestEditorLabel)}</div>
-            ${
-              requestEditor
-                ? `
-            <div class="code-block">
-              <div class="code-block-header">
-                <div class="code-block-dot"></div>
-                <div class="code-block-dot"></div>
-                <div class="code-block-dot"></div>
-                <span class="code-block-label">${escapeHtml(requestEditorFile)}</span>
-              </div>
-              <textarea class="request-editor" id="${escapeHtml(requestEditorId)}" spellcheck="false">${escapeHtml(requestEditor)}</textarea>
-            </div>
-            <p class="request-editor-help">Edit this JSON before trying the endpoint. The paid retry uses the exact same payload.</p>
-            `
-                : `
-            <div class="code-block">
-              <div class="code-block-header">
-                <div class="code-block-dot"></div>
-                <div class="code-block-dot"></div>
-                <div class="code-block-dot"></div>
-                <span class="code-block-label">request</span>
-              </div>
-              <pre>${escapeHtml(endpoint.requestExample)}</pre>
-            </div>
-            `
-            }
-            <div class="endpoint-section-label" style="margin-top: 14px;">CLI Example</div>
-            <div class="code-block">
-              <div class="code-block-header">
-                <div class="code-block-dot"></div>
-                <div class="code-block-dot"></div>
-                <div class="code-block-dot"></div>
-                <span class="code-block-label">curl</span>
-              </div>
-              <pre>${escapeHtml(endpoint.requestExample)}</pre>
-            </div>
-          </div>
-          <div>
-            <div class="endpoint-section-label">${endpoint.bodySchema ? "Body Schema" : "Query Parameters"}</div>
-            ${
-              params.length > 0
-                ? `<ul class="endpoint-params">${params.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>`
-                : `<p style="color: var(--text-tertiary); font-size: 0.85rem;">No additional parameters</p>`
-            }
-          </div>
-        </div>
-        <div class="try-section">
-          <button class="try-btn" data-endpoint-id="${endpointId}" data-method="${escapeHtml(endpoint.method)}" data-path="${escapeHtml(endpoint.fullPath)}" data-base-url="${escapeHtml(baseUrl)}" data-request-editor-id="${escapeHtml(requestEditorId)}" onclick="tryEndpoint(this)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            Try with Freighter
-          </button>
-          <div class="try-result" id="result-${endpointId}"></div>
-        </div>
-      </div>
-    </details>
-  `;
-}
-
-function renderCatalogueClientScript() {
-  return `
-      <script>
-      const STELLAR_RPC_URLS = {
-        'stellar:pubnet': ${JSON.stringify(config.stellarRpcUrls.mainnet)},
-        'stellar:testnet': ${JSON.stringify(config.stellarRpcUrls.testnet)},
-      };
-      const STELLAR_ASSET_LABELS = {
-        'stellar:pubnet': {
-          ${JSON.stringify(getUsdcAddress("stellar:pubnet"))}: 'USDC',
-          ${
-            config.networks.mainnet.xlmContractAddress
-              ? `${JSON.stringify(config.networks.mainnet.xlmContractAddress)}: 'XLM',`
-              : ""
-          }
-        },
-        'stellar:testnet': {
-          ${JSON.stringify(getUsdcAddress("stellar:testnet"))}: 'USDC',
-          ${
-            config.networks.testnet.xlmContractAddress
-              ? `${JSON.stringify(config.networks.testnet.xlmContractAddress)}: 'XLM',`
-              : ""
-          }
-        },
-      };
-
-      function normalizeAssetId(value) {
-        return typeof value === 'string' ? value.trim().toUpperCase() : '';
-      }
-
-      function getStellarAssetLabel(requirement) {
-        if (!requirement || typeof requirement.network !== 'string') {
-          return null;
-        }
-
-        const labels = STELLAR_ASSET_LABELS[requirement.network];
-        if (!labels) {
-          return null;
-        }
-
-        return labels[normalizeAssetId(requirement.asset)] || null;
-      }
-
-      function normalizeHeaders(headers) {
-        const result = {};
-        headers.forEach((value, key) => {
-          result[key.toLowerCase()] = value;
-        });
-        return result;
-      }
-
-      function decodeBase64Json(value) {
-        const binary = window.atob(value);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i += 1) {
-          bytes[i] = binary.charCodeAt(i);
-        }
-        return JSON.parse(new TextDecoder().decode(bytes));
-      }
-
-      async function readResponseBody(response) {
-        const text = await response.text();
-
-        if (!text) {
-          return null;
-        }
-
-        try {
-          return JSON.parse(text);
-        } catch (_err) {
-          return text;
-        }
-      }
-
-      function isPlainObject(value) {
-        return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-      }
-
-      function readRequestJson(btn) {
-        const editorId = btn.dataset.requestEditorId;
-
-        if (!editorId) {
-          return {};
-        }
-
-        const editor = document.getElementById(editorId);
-        if (!editor) {
-          throw new Error('Request editor not found for this endpoint.');
-        }
-
-        let parsed;
-
-        try {
-          parsed = JSON.parse(editor.value);
-        } catch (err) {
-          throw new Error('Request JSON is invalid: ' + (err && err.message ? err.message : String(err)));
-        }
-
-        if (!isPlainObject(parsed)) {
-          throw new Error('Request JSON must be a JSON object.');
-        }
-
-        return parsed;
-      }
-
-      function buildQueryString(payload) {
-        const params = new URLSearchParams();
-
-        Object.entries(payload).forEach(([key, value]) => {
-          if (value === undefined || value === null || value === '') {
-            return;
-          }
-
-          if (Array.isArray(value)) {
-            const values = value
-              .filter(item => item !== undefined && item !== null && item !== '')
-              .map(item => String(item));
-
-            if (values.length > 0) {
-              params.set(key, values.join(','));
-            }
-            return;
-          }
-
-          if (typeof value === 'object') {
-            throw new Error('Query JSON values must be strings, numbers, booleans, or arrays.');
-          }
-
-          params.set(key, String(value));
-        });
-
-        return params.toString();
-      }
-
-      function clearInlineError(btn) {
-        const next = btn.parentElement && btn.parentElement.nextElementSibling;
-        if (next && next.classList && next.classList.contains('wallet-error')) {
-          next.remove();
-        }
-      }
-
-      function showInlineError(btn, message) {
-        clearInlineError(btn);
-        btn.parentElement.insertAdjacentHTML(
-          'afterend',
-          '<p class="wallet-error" style="color: var(--pink); font-size: 0.85rem; margin-top: 8px;">' +
-            escapeHtmlClient(String(message)) +
-          '</p>',
-        );
-      }
-
-      function findStellarRequirement(paymentRequired, assetLabel) {
-        if (!paymentRequired || !Array.isArray(paymentRequired.accepts)) {
-          return null;
-        }
-
-        return paymentRequired.accepts.find(requirement =>
-          requirement &&
-          requirement.scheme === 'exact' &&
-          typeof requirement.network === 'string' &&
-          requirement.network.indexOf('stellar:') === 0 &&
-          (!assetLabel || getStellarAssetLabel(requirement) === assetLabel)
-        ) || null;
-      }
-
-      function getAvailableStellarAssetLabels(paymentRequired) {
-        if (!paymentRequired || !Array.isArray(paymentRequired.accepts)) {
-          return [];
-        }
-
-        const labels = [];
-        paymentRequired.accepts.forEach(requirement => {
-          const label = getStellarAssetLabel(requirement);
-          if (label && !labels.includes(label)) {
-            labels.push(label);
-          }
-        });
-        return labels;
-      }
-
-      function filterEndpoints(btn) {
-        const value = btn.getAttribute('data-network-filter');
-        document.querySelectorAll('.filter-btn').forEach(b => {
-          b.setAttribute('aria-pressed', String(b === btn));
-        });
-        document.querySelectorAll('.endpoint-card').forEach(card => {
-          const net = card.getAttribute('data-network');
-          card.style.display = (value === 'all' || net === value) ? '' : 'none';
-        });
-      }
-
-      async function tryEndpoint(btn) {
-        const method = btn.dataset.method;
-        const path = btn.dataset.path;
-        const baseUrl = btn.dataset.baseUrl;
-        const resultId = 'result-' + btn.dataset.endpointId;
-        const resultEl = document.getElementById(resultId);
-
-        btn.disabled = true;
-        btn.textContent = 'Calling endpoint...';
-        resultEl.classList.add('visible');
-        resultEl.innerHTML = '<p style="color: var(--text-tertiary); font-size: 0.85rem;">Making request...</p>';
-
-        try {
-          const url = baseUrl + path;
-          const requestPayload = readRequestJson(btn);
-          const fetchOpts = {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-          };
-          let finalUrl = url;
-
-          if (method === 'POST') {
-            fetchOpts.body = JSON.stringify(requestPayload);
-          } else {
-            const query = buildQueryString(requestPayload);
-            if (query) {
-              const sep = path.includes('?') ? '&' : '?';
-              finalUrl = url + sep + query;
-            }
-          }
-
-          const response = await fetch(finalUrl, fetchOpts);
-          const body = await readResponseBody(response);
-
-          if (response.status === 402) {
-            const paymentRequiredHeader = response.headers.get('payment-required');
-            if (!paymentRequiredHeader) {
-              throw new Error('402 response is missing the PAYMENT-REQUIRED header.');
-            }
-
-            const paymentRequired = decodeBase64Json(paymentRequiredHeader);
-            const availableAssetLabels = getAvailableStellarAssetLabels(paymentRequired);
-            const paymentButtons = ['USDC', 'XLM']
-              .filter(label => availableAssetLabels.includes(label))
-              .map(label =>
-                '<button class="try-btn pay-freighter-btn" data-asset-label="' + label + '">' +
-                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' +
-                'Pay with ' + label +
-                '</button>'
-              )
-              .join('');
-            const ctx = {
-              method,
-              url: finalUrl,
-              fetchOpts,
-              body,
-              responseHeaders: normalizeHeaders(response.headers),
-              paymentRequired,
-            };
-
-            resultEl.innerHTML =
-              '<div class="try-status status-402">&#9888; 402 Payment Required</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(body, null, 2)) + '</pre>' +
-              '<div class="wallet-actions" style="margin-top: 16px;">' +
-              paymentButtons +
-              '</div>';
-
-            resultEl.querySelectorAll('.pay-freighter-btn').forEach(payBtn => {
-              payBtn.__x402ctx = ctx;
-              payBtn.addEventListener('click', function() {
-                payWithFreighter(this, this.__x402ctx, this.dataset.assetLabel || '');
-              });
-            });
-          } else {
-            resultEl.innerHTML =
-              '<div class="try-status status-200">&#10003; ' + response.status + ' OK</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(body, null, 2)) + '</pre>';
-          }
-        } catch (err) {
-          resultEl.innerHTML =
-            '<div class="try-status status-error">&#10007; Error</div>' +
-            '<pre>' + escapeHtmlClient(String(err && err.message ? err.message : err)) + '</pre>';
-        }
-
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Try again';
-      }
-
-      async function payWithFreighter(btn, ctx, assetLabel) {
-        const resultEl = btn.closest('.try-section').querySelector('.try-result');
-        const selectedAssetLabel = assetLabel || 'wallet';
-
-        btn.disabled = true;
-        btn.textContent = 'Reading payment requirements...';
-        clearInlineError(btn);
-
-        try {
-          const paymentRequired = ctx && ctx.paymentRequired ? ctx.paymentRequired : null;
-          const stellarRequirement = findStellarRequirement(paymentRequired, assetLabel);
-
-          if (!stellarRequirement) {
-            throw new Error('No Stellar payment option was returned for ' + selectedAssetLabel + '.');
-          }
-
-          btn.textContent = 'Connecting Freighter...';
-          if (!window.X402Freighter || typeof window.X402Freighter.connectAndCreateHttpClient !== 'function') {
-            throw new Error('Freighter payment client failed to load. Please refresh the page.');
-          }
-
-          const { address, httpClient } = await window.X402Freighter.connectAndCreateHttpClient({
-            network: stellarRequirement.network,
-            rpcUrls: STELLAR_RPC_URLS,
-            preferredAsset: stellarRequirement.asset,
-          });
-
-          if (!address) {
-            throw new Error('No wallet address was returned from Freighter.');
-          }
-
-          btn.textContent = 'Building x402 payment...';
-          const paymentPayload = await httpClient.createPaymentPayload(paymentRequired);
-          const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
-
-          btn.textContent = 'Sending paid request...';
-          const retryOpts = {
-            method: ctx.method,
-            headers: {
-              'Content-Type': 'application/json',
-              ...paymentHeaders,
-            },
-          };
-
-          if (ctx.fetchOpts && ctx.fetchOpts.body) {
-            retryOpts.body = ctx.fetchOpts.body;
-          }
-
-          const retryResponse = await fetch(ctx.url, retryOpts);
-          const retryBody = await readResponseBody(retryResponse);
-          let settlement = null;
-
-          try {
-            settlement = httpClient.getPaymentSettleResponse(name => retryResponse.headers.get(name));
-          } catch (_err) {
-            settlement = null;
-          }
-
-          if (retryResponse.ok) {
-            let html =
-              '<div class="try-status status-200">&#10003; ' + retryResponse.status + ' Paid &amp; Delivered</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(retryBody, null, 2)) + '</pre>';
-
-            if (settlement) {
-              html +=
-                '<div style="margin-top: 12px;">' +
-                '<div class="section-label" style="margin-bottom: 8px;">Settlement</div>' +
-                '<pre>' + escapeHtmlClient(JSON.stringify(settlement, null, 2)) + '</pre>' +
-                '</div>';
-            }
-
-            resultEl.innerHTML = html;
-          } else {
-            resultEl.innerHTML =
-              '<div class="try-status status-error">&#10007; ' + retryResponse.status + '</div>' +
-              '<pre>' + escapeHtmlClient(JSON.stringify(retryBody, null, 2)) + '</pre>';
-          }
-        } catch (err) {
-          showInlineError(btn, err && err.message ? err.message : String(err));
-        }
-
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Retry ' + selectedAssetLabel + ' Payment';
-      }
-
-      function escapeHtmlClient(str) {
-        const div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-      }
-      </script>
-  `;
-}
-
-export function renderServicePage(
-  service: ServiceDefinition,
-  catalog: PlatformCatalog,
-) {
-  const endpoints = catalog.publishedEndpoints.filter(
-    (ep) => ep.serviceId === service.id,
-  );
-  const networks = Array.from(new Set(endpoints.map((ep) => ep.network)));
-  const accent = serviceAccentColor(service.id);
+export function renderServicePage(service: ServiceDefinition, catalog: PlatformCatalog) {
+  const serviceRoutes = catalog.publishedEndpoints.filter((endpoint) => endpoint.serviceId === service.id);
+  const networks = Array.from(new Set(serviceRoutes.map((endpoint) => endpoint.network)));
+  const prices = Array.from(new Set(serviceRoutes.map((endpoint) => endpoint.priceUsd)));
 
   return layout({
-    title: `${service.name} | xlm402.com`,
+    title: `${service.name} | xlm402 services`,
     description: service.description,
     body: `
-      <div class="container">
-        ${renderNav("")}
+      <div class="page-shell">
+        ${renderNav("service")}
+        <a class="back-link" href="/">&#8592; Back to catalogue</a>
 
-        <section class="service-hero">
-          <a href="/" class="back-link">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-            Back to catalogue
-          </a>
-          <div class="service-hero-inner">
-            <div class="service-hero-icon" style="color: ${accent}; background: linear-gradient(135deg, ${accent}15, ${accent}08); border-color: ${accent}30;">
-              ${serviceIcon(service.id)}
-            </div>
-            <div>
-              <h1>${escapeHtml(service.name)}</h1>
-              <p>${escapeHtml(service.description)}</p>
-              <div class="service-highlights">
-                ${networks.map((n) => `<span class="tag tag-network">${escapeHtml(n)}</span>`).join("")}
-                ${service.highlights.map((h) => `<span class="tag">${escapeHtml(h)}</span>`).join("")}
-              </div>
-            </div>
+        <section class="service-header">
+          <div class="service-header-top">
+            <span class="service-icon" style="background:${serviceAccent(service.id)}">${escapeHtml(serviceIcon(service.id))}</span>
+            <div class="eyebrow">${escapeHtml(service.audience)}</div>
+          </div>
+          <h1>${escapeHtml(service.name)}</h1>
+          <p>${escapeHtml(service.description)}</p>
+          <div class="meta-row">
+            ${networks.map((network) => `<span class="meta-pill">${escapeHtml(network)}</span>`).join("")}
+            ${prices.map((price) => `<span class="meta-pill">$${escapeHtml(price)} USD</span>`).join("")}
+            ${service.highlights.map((highlight) => `<span class="meta-pill">${escapeHtml(highlight)}</span>`).join("")}
           </div>
         </section>
 
-        <section class="section" style="padding-top: 0;">
-          <div class="section-label">Endpoints</div>
-          <h2 class="section-title">${endpoints.length} endpoint${endpoints.length === 1 ? "" : "s"} available</h2>
-          <p class="section-subtitle">
-            Click any endpoint to see details, example requests, and try it live with your Freighter wallet.
-          </p>
-
-          ${networks.length > 1 ? `
-          <div class="filter-bar">
-            <button class="filter-btn" data-network-filter="all" aria-pressed="true" onclick="filterEndpoints(this)">All</button>
-            ${networks.map((n) => `<button class="filter-btn" data-network-filter="${escapeHtml(n)}" aria-pressed="false" onclick="filterEndpoints(this)">${escapeHtml(n)}</button>`).join("")}
+        <section class="section">
+          <div class="section-head">
+            <div class="eyebrow">Reference</div>
+            <h2>${escapeHtml(service.name)} endpoints</h2>
+            <p>
+              Static reference extracted from the server code and validation layer. For the complete portal,
+              including setup guides, discovery endpoints, MCP instructions, and shared response conventions,
+              see <a href="/docs"><span class="inline-code">/docs</span></a>.
+            </p>
           </div>
-          ` : ""}
-
-          <div class="endpoints-grid">
-            ${endpoints.map((ep) => renderEndpointDetail(ep, config.publicBaseUrl)).join("")}
+          <div class="reference-stack">
+            ${renderServiceReference(service.id, catalog)}
           </div>
         </section>
 
         ${renderFooter()}
       </div>
-      ${renderCatalogueClientScript()}
     `,
   });
 }
 
 export function renderDocsPage(catalog: PlatformCatalog) {
-  const endpoints = catalog.publishedEndpoints;
-  const networks = Array.from(new Set(endpoints.map((ep) => ep.network)));
+  const endpointDocs = getEndpointDocs(catalog);
+  const weatherDocs = endpointDocs.filter((endpoint) => endpoint.id.startsWith("weather-"));
+  const newsDocs = endpointDocs.filter((endpoint) => endpoint.id.startsWith("news-"));
+  const chatDocs = endpointDocs.filter((endpoint) => endpoint.id.startsWith("chat-"));
+  const imageDocs = endpointDocs.filter((endpoint) => endpoint.id.startsWith("image-"));
+
+  const unpaidResponseExample = json({
+    error: "payment_required",
+    message: "This endpoint requires x402 payment",
+    price_usd: config.prices.weather,
+    assets: [
+      { asset: "USDC", price: config.prices.weather },
+      { asset: "XLM", price: "dynamic" },
+    ],
+    network: "mainnet",
+    pay_to: config.networks.mainnet.payToAddress,
+    facilitator_url: config.networks.mainnet.facilitatorUrl,
+    route: "/weather/current",
+  });
+
+  const apiCatalogExample = json({
+    service: config.platformName,
+    public_base_url: config.publicBaseUrl,
+    payment_assets: config.xlmEnabled ? ["USDC", "XLM"] : ["USDC"],
+    openai_enabled: config.openai.enabled,
+    services: [
+      {
+        id: "weather",
+        name: "Weather Intelligence",
+      },
+    ],
+    endpoints: [
+      {
+        id: "weather-current",
+        service: "weather",
+        method: "GET",
+        path: "/weather/current",
+        network: "mainnet",
+        price_usd: config.prices.weather,
+        payment_assets: ["USDC", "XLM"],
+        response_type: "application/json",
+      },
+    ],
+  });
+
+  const x402ManifestExample = json({
+    version: 1,
+    service: config.platformName,
+    resources: [
+      {
+        id: "weather-current",
+        service: "weather",
+        method: "GET",
+        path: "/weather/current",
+        description: "Current weather conditions for a latitude and longitude.",
+        payments: [
+          {
+            protocol: "x402",
+            scheme: "exact",
+            network: "stellar:pubnet",
+            asset: "USDC",
+            price_usd: config.prices.weather,
+            pay_to: config.networks.mainnet.payToAddress,
+            facilitator_url: config.networks.mainnet.facilitatorUrl,
+          },
+        ],
+      },
+    ],
+  });
 
   return layout({
-    title: "Docs | xlm402.com",
+    title: "Documentation | xlm402 services",
     description:
-      "API documentation for xlm402.com x402 services on Stellar.",
+      "Comprehensive setup and API reference documentation for xlm402 services on Stellar.",
     body: `
-      <div class="container">
+      <div class="page-shell">
         ${renderNav("docs")}
 
-        <section class="section" style="padding-top: 48px;">
-          <div class="section-label">Documentation</div>
-          <h2 class="section-title">API Reference</h2>
-          <p class="section-subtitle">
-            All routes are protected by x402. Mainnet routes live at the root path.
-            Testnet mirrors weather under <code>/testnet</code>. AI services are mainnet only.
-          </p>
-
-          <div class="filter-bar">
-            <button class="filter-btn" data-network-filter="all" aria-pressed="true" onclick="filterEndpoints(this)">All routes</button>
-            ${networks.map((n) => `<button class="filter-btn" data-network-filter="${escapeHtml(n)}" aria-pressed="false" onclick="filterEndpoints(this)">${escapeHtml(n)}</button>`).join("")}
-          </div>
-
-          <div class="endpoints-grid">
-            ${endpoints.map((ep) => renderEndpointDetail(ep, config.publicBaseUrl)).join("")}
-          </div>
-        </section>
-
-        <section class="section">
-          <div class="integration-panel">
-            <div>
-              <div class="section-label">Integration Notes</div>
-              <h3>Discovery &amp; Payment Flow</h3>
-              <ul>
-                <li><code>/.well-known/x402</code> returns the published route list with price, network, and pay-to metadata.</li>
-                <li><code>/supported</code> returns facilitator support by network so clients can inspect enabled schemes.</li>
-                <li>402 responses include network-specific payment requirements for the route requested.</li>
-                <li>Chat and image services activate automatically when <code>OPENAI_API_KEY</code> is configured.</li>
-              </ul>
+        <div class="docs-layout">
+          <aside class="docs-sidebar">
+            <div class="sidebar-card">
+              <div class="sidebar-title">Guide</div>
+              <div class="sidebar-links">
+                <a href="#overview">Overview</a>
+                <a href="#quickstart">Quickstart</a>
+                <a href="#payment-flow">x402 Payment Flow</a>
+                <a href="#mcp-setup">MCP Server Setup</a>
+                <a href="#discovery">Discovery Endpoints</a>
+                <a href="#conventions">API Conventions</a>
+                <a href="#errors">Errors</a>
+              </div>
             </div>
-            <div>
-              <div class="section-label">Platform Details</div>
-              <h3>Configuration</h3>
-              <ul>
-                <li>Text model: <code>${escapeHtml(config.openai.chatModel)}</code></li>
-                <li>Image model: <code>${escapeHtml(config.openai.imageModel)}</code></li>
-                <li>Base URL: <code>${escapeHtml(config.publicBaseUrl)}</code></li>
-                <li>AI services: ${config.openai.enabled ? "Enabled" : "Pending API key"}</li>
-              </ul>
+            <div class="sidebar-card">
+              <div class="sidebar-title">API Reference</div>
+              <div class="sidebar-group">
+                <div class="sidebar-group-label">Weather</div>
+                <div class="sidebar-links">
+                  <a href="#weather">Overview</a>
+                  <a href="#weather-current">Current</a>
+                  <a href="#weather-forecast">Forecast</a>
+                  <a href="#weather-archive">Archive</a>
+                  <a href="#weather-history-summary">History summary</a>
+                </div>
+              </div>
+              <div class="sidebar-group">
+                <div class="sidebar-group-label">News</div>
+                <div class="sidebar-links">
+                  <a href="#news">Overview</a>
+                  <a href="#news-category">News by category</a>
+                </div>
+              </div>
+              <div class="sidebar-group">
+                <div class="sidebar-group-label">AI</div>
+                <div class="sidebar-links">
+                  <a href="#chat">Chat respond</a>
+                  <a href="#chat-respond">Chat endpoint</a>
+                  <a href="#image">Image generate</a>
+                  <a href="#image-generate">Image endpoint</a>
+                </div>
+              </div>
             </div>
-          </div>
-        </section>
+          </aside>
+
+          <main class="docs-content">
+            <section class="doc-header" id="overview">
+              <div class="eyebrow">Documentation portal</div>
+              <h1 class="doc-title">Setup, pay, and integrate xlm402 services.</h1>
+              <p class="doc-lead">
+                This portal separates human documentation from the live catalogue. It covers local setup,
+                machine-readable discovery, x402 payment behavior, MCP integration, and the exact JSON contracts
+                exposed by the server code.
+              </p>
+              <div class="meta-row" style="margin-top:18px;">
+                <span class="meta-pill">${catalog.publishedEndpoints.length} published routes</span>
+                <span class="meta-pill">mainnet + testnet</span>
+                <span class="meta-pill">x402 discovery manifest</span>
+                <span class="meta-pill">MCP compatible</span>
+              </div>
+            </section>
+
+            <section class="doc-section" id="quickstart">
+              <h2>Quickstart</h2>
+              <p>
+                The platform is configured from <code>config/app.json</code> plus secrets in <code>.env</code>.
+                Local development publishes the human docs at <code>/docs</code> and the live discovery JSON at
+                <code>/api/catalog</code> and <code>/.well-known/x402</code>.
+              </p>
+              <div class="reference-columns">
+                <div>
+                  ${renderCodeBlock(
+                    "Local run",
+                    `cp .env.example .env
+npm install
+npm run dev`,
+                  )}
+                </div>
+                <div>
+                  ${renderCodeBlock(
+                    "First discovery calls",
+                    `curl ${config.publicBaseUrl}/api/catalog
+curl ${config.publicBaseUrl}/.well-known/x402
+curl "${config.publicBaseUrl}/weather/current?latitude=51.5072&longitude=-0.1276&timezone=auto"`,
+                  )}
+                </div>
+              </div>
+              <div class="callout" style="margin-top:18px;">
+                <h3>Runtime layout</h3>
+                <p>
+                  Mainnet routes live at the root path. Testnet mirrors the weather and news families under
+                  <code>/testnet</code>. AI routes are mainnet-only and publish only when <code>OPENAI_API_KEY</code>
+                  is configured.
+                </p>
+              </div>
+            </section>
+
+            <section class="doc-section" id="payment-flow">
+              <h2>x402 payment flow</h2>
+              <p>
+                Every paid route behaves like a normal HTTP endpoint until the server requires payment. The first
+                unpaid request returns HTTP 402 with JSON guidance in the body and a base64-encoded
+                <code>payment-required</code> header for x402 clients.
+              </p>
+              <div class="step-grid">
+                <div class="step-card">
+                  <div class="step-number">1</div>
+                  <h3>Call the route</h3>
+                  <p>Clients send a normal GET or POST request to a paid path.</p>
+                </div>
+                <div class="step-card">
+                  <div class="step-number">2</div>
+                  <h3>Receive HTTP 402</h3>
+                  <p>The response includes the route, price, network, facilitator URL, pay-to address, and acceptable assets.</p>
+                </div>
+                <div class="step-card">
+                  <div class="step-number">3</div>
+                  <h3>Create the payment</h3>
+                  <p>An x402 client or wallet signs the exact Stellar payment using the returned requirement details.</p>
+                </div>
+                <div class="step-card">
+                  <div class="step-number">4</div>
+                  <h3>Retry with proof</h3>
+                  <p>The paid retry succeeds and returns the standard JSON envelope with the purchased data under <code>data</code>.</p>
+                </div>
+              </div>
+              <div class="reference-columns" style="margin-top:18px;">
+                <div>${renderCodeBlock("402 response JSON", unpaidResponseExample)}</div>
+                <div>${renderCodeBlock("Success envelope JSON", json(sharedEnvelopeExample(config.prices.weather, "mainnet", { example: "payload" })))}</div>
+              </div>
+            </section>
+
+            <section class="doc-section" id="mcp-setup">
+              <h2>MCP server setup</h2>
+              <p>
+                For agent workflows, pair this resource server with the
+                <a href="https://github.com/jamesbachini/x402-mcp-stellar" target="_blank" rel="noopener noreferrer">
+                  x402 Stellar MCP server
+                </a>.
+                The steps below are based on that repository’s README and adapted into a single setup flow for Codex,
+                Claude Code, or any MCP-compatible client.
+              </p>
+              <div class="reference-columns">
+                <div>
+                  ${renderCodeBlock(
+                    "Prerequisites",
+                    `Node.js 20+
+Funded Stellar wallet
+This xlm402 resource server running locally
+Facilitator reachable for the target network`,
+                  )}
+                  ${renderCodeBlock(
+                    "Testnet .env",
+                    `STELLAR_SECRET_KEY=S...
+STELLAR_NETWORK=stellar:testnet`,
+                  )}
+                </div>
+                <div>
+                  ${renderCodeBlock(
+                    "Mainnet .env",
+                    `STELLAR_NETWORK=stellar:pubnet
+STELLAR_RPC_URL=https://rpc.lightsail.network/
+X402_FACILITATOR_URL=https://channels.openzeppelin.com/x402
+X402_FACILITATOR_API_KEY=<your-openzeppelin-api-key>`,
+                  )}
+                  ${renderCodeBlock(
+                    "Run + register in Codex",
+                    `npm install
+cp .env.example .env
+npm run dev
+
+codex mcp add x402-stellar -- npm --silent --prefix /absolute/path/to/x402-mcp-stellar run dev`,
+                  )}
+                </div>
+              </div>
+              <div class="callout" style="margin-top:18px;">
+                <h3>Operational notes</h3>
+                <p>
+                  The MCP server runs over stdio, loads its own project-local <code>.env</code>, exposes wallet
+                  info plus paid fetch tools, and can automatically attach OpenZeppelin facilitator authorization
+                  when <code>X402_FACILITATOR_API_KEY</code> is set.
+                </p>
+              </div>
+            </section>
+
+            <section class="doc-section" id="discovery">
+              <h2>Discovery endpoints</h2>
+              <p>
+                Human-readable docs and machine-readable discovery are both first-class. Use these endpoints to list
+                routes, prices, supported schemes, and health status programmatically.
+              </p>
+              ${renderDiscoveryCards()}
+              <div class="reference-columns" style="margin-top:18px;">
+                <div>${renderCodeBlock("/api/catalog", apiCatalogExample)}</div>
+                <div>${renderCodeBlock("/.well-known/x402", x402ManifestExample)}</div>
+              </div>
+            </section>
+
+            <section class="doc-section" id="conventions">
+              <h2>API conventions</h2>
+              <p>
+                All successful paid route responses are JSON with a common envelope. GET routes use query parameters,
+                POST routes require a JSON object body, and validation errors use the same compact error schema.
+              </p>
+              <div class="reference-columns">
+                <div>
+                  ${renderFieldTable("Shared success envelope", [
+                    { name: "network", type: "string", required: "Yes", description: "Network label for the published route." },
+                    { name: "paid", type: "boolean", required: "Yes", description: "True when payment succeeded." },
+                    { name: "price_usd", type: "string", required: "Yes", description: "Decimal USD price string." },
+                    { name: "assets", type: "string[]", required: "Yes", description: "Advertised settlement assets." },
+                    { name: "data", type: "object | array | scalar", required: "Yes", description: "Endpoint-specific payload." },
+                  ])}
+                </div>
+                <div>
+                  ${renderCodeBlock(
+                    "Shared success envelope",
+                    json(sharedEnvelopeExample(config.prices.weather, "mainnet", { endpoint_specific_payload: true })),
+                  )}
+                </div>
+              </div>
+              <div class="summary-grid" style="margin-top:18px;">
+                <div class="content-panel">
+                  <div class="eyebrow">Base URL</div>
+                  <h3>${escapeHtml(config.publicBaseUrl)}</h3>
+                  <p>Use the public base URL from config or overrides. Mainnet routes live at the root path.</p>
+                </div>
+                <div class="content-panel">
+                  <div class="eyebrow">Testnet prefix</div>
+                  <h3><code>/testnet</code></h3>
+                  <p>Testnet mirrors the weather and news families under a dedicated prefix.</p>
+                </div>
+                <div class="content-panel">
+                  <div class="eyebrow">Content type</div>
+                  <h3><code>application/json</code></h3>
+                  <p>Every documented public and paid endpoint returns JSON.</p>
+                </div>
+                <div class="content-panel">
+                  <div class="eyebrow">Pricing</div>
+                  <h3>Decimal strings</h3>
+                  <p>Route prices are configured as USD decimal strings and surfaced consistently in docs and discovery endpoints.</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="doc-section" id="weather">
+              <h2>Weather API</h2>
+              <p>
+                Weather routes are available on both mainnet and testnet. Current, forecast, and archive responses
+                wrap Open-Meteo JSON directly. The history summary endpoint is a compact server-side aggregation.
+              </p>
+              <div class="reference-stack">
+                ${weatherDocs.map((endpoint) => renderEndpointDoc(endpoint)).join("")}
+              </div>
+            </section>
+
+            <section class="doc-section" id="news">
+              <h2>News API</h2>
+              <p>
+                News aggregation is available on both networks with the same request contract. The server normalizes
+                RSS and Atom content into a stable response shape and reports per-feed errors without failing the
+                whole request when at least one source succeeds.
+              </p>
+              <div class="reference-stack">
+                ${newsDocs.map((endpoint) => renderEndpointDoc(endpoint)).join("")}
+              </div>
+            </section>
+
+            <section class="doc-section" id="chat">
+              <h2>Chat API</h2>
+              <p>
+                The chat route is mainnet-only and uses the configured model
+                <code> ${escapeHtml(config.openai.chatModel)}</code>. Publication depends on
+                <code> OPENAI_API_KEY</code>, but the request and response contracts remain stable.
+              </p>
+              <div class="reference-stack">
+                ${chatDocs.map((endpoint) => renderEndpointDoc(endpoint)).join("")}
+              </div>
+            </section>
+
+            <section class="doc-section" id="image">
+              <h2>Image API</h2>
+              <p>
+                The image generation route is mainnet-only and uses the configured model
+                <code> ${escapeHtml(config.openai.imageModel)}</code>. Responses return a single base64-encoded image
+                payload so downstream clients can save or forward the generated asset without an additional file fetch.
+              </p>
+              <div class="reference-stack">
+                ${imageDocs.map((endpoint) => renderEndpointDoc(endpoint)).join("")}
+              </div>
+            </section>
+
+            <section class="doc-section" id="errors">
+              <h2>Errors</h2>
+              <p>
+                Validation, not-found, upstream, and internal failures all serialize to a compact JSON format.
+                Standard route validation uses <code>invalid_request</code>. Missing routes return
+                <code>not_found</code>. Unexpected upstream failures map to <code>upstream_error</code>.
+              </p>
+              <div class="reference-columns">
+                <div>
+                  ${renderFieldTable("Error response", [
+                    { name: "error", type: "string", required: "Yes", description: "Machine-readable error code." },
+                    { name: "message", type: "string", required: "Yes", description: "Human-readable explanation." },
+                  ])}
+                </div>
+                <div>
+                  ${renderCodeBlock(
+                    "Error JSON",
+                    json({
+                      error: "invalid_request",
+                      message: "forecast_days must be an integer between 1 and 16",
+                    }),
+                  )}
+                </div>
+              </div>
+            </section>
+          </main>
+
+          <aside class="docs-toc">
+            <div class="toc-card">
+              <div class="toc-title">On this page</div>
+              <div class="toc-links">
+                <a href="#overview">Overview</a>
+                <a href="#quickstart">Quickstart</a>
+                <a href="#payment-flow">x402 Payment Flow</a>
+                <a href="#mcp-setup">MCP Setup</a>
+                <a href="#discovery">Discovery</a>
+                <a href="#conventions">Conventions</a>
+                <a href="#weather">Weather</a>
+                <a href="#news">News</a>
+                <a href="#chat">Chat</a>
+                <a href="#image">Image</a>
+                <a href="#errors">Errors</a>
+              </div>
+            </div>
+          </aside>
+        </div>
 
         ${renderFooter()}
       </div>
-      ${renderCatalogueClientScript()}
     `,
   });
 }
