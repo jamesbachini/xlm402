@@ -27,7 +27,7 @@
   "networks": {
     "mainnet": {
       "payToAddress": "GA4D33Z3EOB6BU4DOXS2JMZK3JQRABN3ERMF3FK5JF5YPG3CEKRI7WM4",
-      "facilitatorUrl": "https://www.x402.org/facilitator",
+      "facilitatorUrl": "https://channels.openzeppelin.com/x402",
       "xlmContractAddress": "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA"
     },
     "testnet": {
