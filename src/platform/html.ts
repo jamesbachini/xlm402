@@ -1628,7 +1628,7 @@ export function renderIndexPage(catalog: PlatformCatalog) {
             <div class="stat-label">Networks</div>
           </div>
           <div class="stat">
-            <div class="stat-value">USDC mainnet, XLM testnet</div>
+            <div class="stat-value">USDC &amp; XLM</div>
             <div class="stat-label">Payment Assets</div>
           </div>
         </div>
