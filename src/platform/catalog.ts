@@ -223,8 +223,8 @@ const endpointDefinitions: ServiceEndpoint[] = [
     priceByNetwork: {
       mainnet: config.prices.chat,
     },
-    requestExample: `curl -X POST "${config.publicBaseUrl}/chat/respond" -H "Content-Type: application/json" -d @- <<'JSON'\n{\n  "prompt": "Write a landing page headline for a premium weather API on Stellar.",\n  "system": "Be concise and commercial.",\n  "reasoning_effort": "medium"\n}\nJSON`,
-    requestBodyExample: `{\n  "prompt": "Write a landing page headline for a premium weather API on Stellar.",\n  "system": "Be concise and commercial.",\n  "reasoning_effort": "medium"\n}`,
+    requestExample: `curl -X POST "${config.publicBaseUrl}/chat/respond" -H "Content-Type: application/json" -d @- <<'JSON'\n{\n  "prompt": "Write a poem about the Stellar network.",\n  "system": "Be concise and professional in your response.",\n  "reasoning_effort": "medium"\n}\nJSON`,
+    requestBodyExample: `{\n  "prompt": "Write a landing page headline for a premium weather API on Stellar.",\n  "system": "Be concise and professional in your response.",\n  "reasoning_effort": "medium"\n}`,
     bodySchema: [
       "prompt: string",
       "system?: string",

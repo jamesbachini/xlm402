@@ -3,6 +3,9 @@ import { config } from "../config.js";
 import { HttpError } from "../utils/errors.js";
 
 const REASONING_EFFORTS = new Set(["none", "low", "medium", "high", "xhigh"]);
+const REASONING_EFFORT_ALIASES = new Map<string, ChatRequest["reasoningEffort"]>([
+  ["minimal", "low"],
+]);
 
 export type ChatRequest = {
   prompt: string;
@@ -50,7 +53,10 @@ function normalizeMetadata(metadata: Record<string, string>) {
 }
 
 export async function createChatCompletion(request: ChatRequest) {
-  if (!REASONING_EFFORTS.has(request.reasoningEffort)) {
+  const reasoningEffort: ChatRequest["reasoningEffort"] =
+    REASONING_EFFORT_ALIASES.get(request.reasoningEffort) ?? request.reasoningEffort;
+
+  if (!REASONING_EFFORTS.has(reasoningEffort)) {
     throw new HttpError(400, "invalid_request", "Unsupported reasoning effort");
   }
 
@@ -61,7 +67,7 @@ export async function createChatCompletion(request: ChatRequest) {
       instructions: request.system,
       max_output_tokens: request.maxOutputTokens,
       reasoning: {
-        effort: request.reasoningEffort,
+        effort: reasoningEffort,
       },
       metadata: normalizeMetadata(request.metadata),
       store: false,

@@ -370,9 +370,9 @@ before(async () => {
   process.env.OPEN_METEO_BASE_URL = weatherServer.baseUrl;
   process.env.OPEN_METEO_ARCHIVE_BASE_URL = weatherServer.baseUrl;
 
-  const [{ createApp }, htmlModule, catalogModule] = await Promise.all([
+  const [{ createApp }, docsModule, catalogModule] = await Promise.all([
     import("../src/app.ts"),
-    import("../src/platform/html.ts"),
+    import("../src/platform/docs.ts"),
     import("../src/platform/catalog.ts"),
   ]);
 
@@ -389,7 +389,7 @@ before(async () => {
   context = {
     appBaseUrl: `http://127.0.0.1:${appAddress.port}`,
     facilitatorRequests,
-    renderDocsPage: htmlModule.renderDocsPage,
+    renderDocsPage: docsModule.renderDocsPage,
     buildPlatformCatalog: catalogModule.buildPlatformCatalog,
     close: async () => {
       await new Promise<void>((resolve, reject) => {

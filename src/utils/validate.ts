@@ -83,6 +83,9 @@ const CHAT_REASONING_EFFORTS = new Set<ChatRequest["reasoningEffort"]>([
   "high",
   "xhigh",
 ]);
+const CHAT_REASONING_EFFORT_ALIASES = new Map<string, ChatRequest["reasoningEffort"]>([
+  ["minimal", "low"],
+]);
 const IMAGE_SIZES = new Set<ImageRequest["size"]>([
   "auto",
   "1024x1024",
@@ -359,6 +362,29 @@ function parseEnumValue<T extends string>(
   return trimmed;
 }
 
+function parseChatReasoningEffort(value: unknown): ChatRequest["reasoningEffort"] {
+  if (value === undefined) {
+    return "medium";
+  }
+
+  if (typeof value !== "string") {
+    throw new HttpError(400, "invalid_request", "reasoning_effort must be a string");
+  }
+
+  const trimmed = value.trim();
+  const normalized = CHAT_REASONING_EFFORT_ALIASES.get(trimmed) ?? trimmed;
+
+  if (!CHAT_REASONING_EFFORTS.has(normalized as ChatRequest["reasoningEffort"])) {
+    throw new HttpError(
+      400,
+      "invalid_request",
+      `reasoning_effort must be one of: ${Array.from(CHAT_REASONING_EFFORTS).join(", ")}`,
+    );
+  }
+
+  return normalized as ChatRequest["reasoningEffort"];
+}
+
 function parseMetadata(value: unknown): Record<string, string> {
   if (value === undefined) {
     return {};
@@ -413,12 +439,7 @@ export function parseChatRequest(body: unknown): ChatRequest {
       4096,
       800,
     ),
-    reasoningEffort: parseEnumValue(
-      input.reasoning_effort,
-      "reasoning_effort",
-      CHAT_REASONING_EFFORTS,
-      "medium",
-    ),
+    reasoningEffort: parseChatReasoningEffort(input.reasoning_effort),
     metadata: parseMetadata(input.metadata),
   };
 }

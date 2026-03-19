@@ -513,6 +513,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .hero-subtitle {
+  font-family: var(--font-brand);
   font-size: 0.8rem;
   color: var(--text-secondary);
   max-width: 600px;
@@ -1648,7 +1649,7 @@ export function renderIndexPage(catalog: PlatformCatalog) {
             <div class="stat-label">Services</div>
           </div>
           <div class="stat">
-            <div class="stat-value">2</div>
+            <div class="stat-value">Testnet &amp; Mainnet</div>
             <div class="stat-label">Networks</div>
           </div>
           <div class="stat">
