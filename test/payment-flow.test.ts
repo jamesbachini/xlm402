@@ -21,6 +21,9 @@ type AppContext = {
     verify: Array<Record<string, unknown>>;
     settle: Array<Record<string, unknown>>;
   };
+  facilitatorBehavior: {
+    settleMode: "success" | "failure";
+  };
   renderDocsPage: (catalog: unknown) => string;
   buildPlatformCatalog: () => unknown;
 };
@@ -306,6 +309,9 @@ before(async () => {
     verify: [] as Array<Record<string, unknown>>,
     settle: [] as Array<Record<string, unknown>>,
   };
+  const facilitatorBehavior = {
+    settleMode: "success" as "success" | "failure",
+  };
 
   const facilitatorServer = await startJsonServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -346,6 +352,17 @@ before(async () => {
       const body = await readJson(req);
       facilitatorRequests.settle.push(body);
       const paymentRequirements = body.paymentRequirements as Record<string, unknown>;
+
+      if (facilitatorBehavior.settleMode === "failure") {
+        return sendJson(res, 400, {
+          success: false,
+          errorReason: "asset_not_supported",
+          errorMessage: `Asset ${String(paymentRequirements.asset)} is not enabled for settlement`,
+          transaction: "",
+          network: paymentRequirements.network,
+        });
+      }
+
       return sendJson(res, 200, {
         success: true,
         payer: "GTESTPAYER",
@@ -389,6 +406,7 @@ before(async () => {
   context = {
     appBaseUrl: `http://127.0.0.1:${appAddress.port}`,
     facilitatorRequests,
+    facilitatorBehavior,
     renderDocsPage: docsModule.renderDocsPage,
     buildPlatformCatalog: catalogModule.buildPlatformCatalog,
     close: async () => {
@@ -404,6 +422,10 @@ before(async () => {
 after(async () => {
   globalThis.fetch = originalFetch;
   await context.close();
+});
+
+test.afterEach(() => {
+  context.facilitatorBehavior.settleMode = "success";
 });
 
 test("catalogue HTML uses the v2 payment flow and bundled Freighter client", () => {
@@ -427,7 +449,7 @@ test("catalogue HTML uses the v2 payment flow and bundled Freighter client", () 
   assert.doesNotMatch(html, /A beautiful sunset over the ocean/);
 });
 
-test("weather routes expose USDC and XLM payment requirements on mainnet and testnet", async () => {
+test("weather routes expose USDC on mainnet and USDC plus XLM on testnet", async () => {
   const client = new x402HTTPClient(new x402Client());
   const cases = [
     {
@@ -438,6 +460,8 @@ test("weather routes expose USDC and XLM payment requirements on mainnet and tes
       network: "stellar:pubnet",
       payTo: process.env.MAINNET_PAY_TO_ADDRESS!,
       xlmContract: mainnetXlmContract,
+      expectedAccepts: 1,
+      expectsXlm: false,
     },
     {
       route: "/testnet/weather/current",
@@ -447,6 +471,8 @@ test("weather routes expose USDC and XLM payment requirements on mainnet and tes
       network: "stellar:testnet",
       payTo: process.env.TESTNET_PAY_TO_ADDRESS!,
       xlmContract: testnetXlmContract,
+      expectedAccepts: 2,
+      expectsXlm: true,
     },
   ];
 
@@ -461,7 +487,7 @@ test("weather routes expose USDC and XLM payment requirements on mainnet and tes
     );
 
     assert.equal(unpaidBody.route, testCase.route);
-    assert.equal(paymentRequired.accepts.length, 2);
+    assert.equal(paymentRequired.accepts.length, testCase.expectedAccepts);
 
     const usdcRequirement = paymentRequired.accepts.find(
       (requirement) => requirement.asset === getUsdcAddress(testCase.network),
@@ -471,15 +497,17 @@ test("weather routes expose USDC and XLM payment requirements on mainnet and tes
     );
 
     assert.ok(usdcRequirement);
-    assert.ok(xlmRequirement);
+    assert.equal(Boolean(xlmRequirement), testCase.expectsXlm);
     assert.equal(usdcRequirement.network, testCase.network);
-    assert.equal(xlmRequirement.network, testCase.network);
     assert.equal(usdcRequirement.payTo, testCase.payTo);
-    assert.equal(xlmRequirement.payTo, testCase.payTo);
+    if (xlmRequirement) {
+      assert.equal(xlmRequirement.network, testCase.network);
+      assert.equal(xlmRequirement.payTo, testCase.payTo);
+    }
   }
 });
 
-test("news routes expose USDC and XLM payment requirements on mainnet and testnet", async () => {
+test("news routes expose USDC on mainnet and USDC plus XLM on testnet", async () => {
   const client = new x402HTTPClient(new x402Client());
   const cases = [
     {
@@ -488,6 +516,8 @@ test("news routes expose USDC and XLM payment requirements on mainnet and testne
       network: "stellar:pubnet",
       payTo: process.env.MAINNET_PAY_TO_ADDRESS!,
       xlmContract: mainnetXlmContract,
+      expectedAccepts: 1,
+      expectsXlm: false,
     },
     {
       route: "/testnet/news/global",
@@ -495,6 +525,8 @@ test("news routes expose USDC and XLM payment requirements on mainnet and testne
       network: "stellar:testnet",
       payTo: process.env.TESTNET_PAY_TO_ADDRESS!,
       xlmContract: testnetXlmContract,
+      expectedAccepts: 2,
+      expectsXlm: true,
     },
   ];
 
@@ -509,7 +541,7 @@ test("news routes expose USDC and XLM payment requirements on mainnet and testne
     );
 
     assert.equal(unpaidBody.route, testCase.route);
-    assert.equal(paymentRequired.accepts.length, 2);
+    assert.equal(paymentRequired.accepts.length, testCase.expectedAccepts);
 
     const usdcRequirement = paymentRequired.accepts.find(
       (requirement) => requirement.asset === getUsdcAddress(testCase.network),
@@ -519,11 +551,13 @@ test("news routes expose USDC and XLM payment requirements on mainnet and testne
     );
 
     assert.ok(usdcRequirement);
-    assert.ok(xlmRequirement);
+    assert.equal(Boolean(xlmRequirement), testCase.expectsXlm);
     assert.equal(usdcRequirement.network, testCase.network);
-    assert.equal(xlmRequirement.network, testCase.network);
     assert.equal(usdcRequirement.payTo, testCase.payTo);
-    assert.equal(xlmRequirement.payTo, testCase.payTo);
+    if (xlmRequirement) {
+      assert.equal(xlmRequirement.network, testCase.network);
+      assert.equal(xlmRequirement.payTo, testCase.payTo);
+    }
   }
 });
 
@@ -592,19 +626,11 @@ test("paid weather route accepts a v2 retry and returns settlement headers", asy
   assert.deepEqual(settleRequest.paymentPayload, verifyRequest.paymentPayload);
 });
 
-test("XLM-selected retries settle against the configured XLM asset on both networks", async () => {
+test("XLM-selected retries settle against the configured XLM asset on testnet", async () => {
   context.facilitatorRequests.verify.length = 0;
   context.facilitatorRequests.settle.length = 0;
 
   const cases = [
-    {
-      url:
-        `${context.appBaseUrl}/weather/current` +
-        "?latitude=51.5072&longitude=-0.1276&timezone=auto",
-      network: "stellar:pubnet",
-      xlmContract: mainnetXlmContract,
-      expectedNetwork: "mainnet",
-    },
     {
       url:
         `${context.appBaseUrl}/testnet/weather/current` +
@@ -656,8 +682,8 @@ test("XLM-selected retries settle against the configured XLM asset on both netwo
     assert.equal(paidBody.network, testCase.expectedNetwork);
   }
 
-  assert.equal(context.facilitatorRequests.verify.length, 2);
-  assert.equal(context.facilitatorRequests.settle.length, 2);
+  assert.equal(context.facilitatorRequests.verify.length, 1);
+  assert.equal(context.facilitatorRequests.settle.length, 1);
 
   context.facilitatorRequests.verify.forEach((request, index) => {
     const payload = request.paymentPayload as Record<string, unknown>;
@@ -671,6 +697,52 @@ test("XLM-selected retries settle against the configured XLM asset on both netwo
     assert.equal(requirements.asset, expectedContract);
     assert.equal(requirements.network, expectedNetwork);
   });
+});
+
+test("settlement failures return the facilitator error instead of a blank body", async () => {
+  context.facilitatorRequests.verify.length = 0;
+  context.facilitatorRequests.settle.length = 0;
+  context.facilitatorBehavior.settleMode = "failure";
+
+  const url =
+    `${context.appBaseUrl}/weather/current` +
+    "?latitude=51.5072&longitude=-0.1276&timezone=auto";
+
+  const unpaidResponse = await fetch(url);
+  assert.equal(unpaidResponse.status, 402);
+
+  const unpaidBody = (await unpaidResponse.json()) as Record<string, unknown>;
+  const client = new x402HTTPClient(
+    new x402Client().register("stellar:*", {
+      scheme: "exact",
+      async createPaymentPayload(x402Version: number) {
+        return {
+          x402Version,
+          payload: {
+            provider: "integration-test",
+            asset: "XLM",
+          },
+        };
+      },
+    }),
+  );
+
+  const paymentRequired = client.getPaymentRequiredResponse(
+    (name) => unpaidResponse.headers.get(name) ?? undefined,
+    unpaidBody,
+  );
+  assert.equal(paymentRequired.accepts.length, 1);
+  const paymentPayload = await client.createPaymentPayload(paymentRequired);
+  const paidResponse = await fetch(url, {
+    headers: client.encodePaymentSignatureHeader(paymentPayload),
+  });
+  const paidBody = (await paidResponse.json()) as Record<string, unknown>;
+
+  assert.equal(paidResponse.status, 402);
+  assert.equal(paidBody.error, "payment_settlement_failed");
+  assert.equal(paidBody.reason, "asset_not_supported");
+  assert.match(String(paidBody.message), new RegExp(getUsdcAddress("stellar:pubnet")));
+  assert.equal(paidBody.route, "/weather/current");
 });
 
 test("paid news route returns standardized mixed stories", async () => {

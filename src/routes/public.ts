@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { config } from "../config.js";
+import { config, getRoutePaymentAssets } from "../config.js";
 import { buildPlatformCatalog } from "../platform/catalog.js";
 import { renderIndexPage, renderServicePage } from "../platform/html.js";
 import { renderDocsPage } from "../platform/docs.js";
@@ -45,7 +45,7 @@ publicRouter.get("/health", (_req, res) => {
     services: catalog.services.map((service) => service.id),
     published_routes: catalog.publishedEndpoints.length,
     networks: Object.keys(config.networks),
-    payment_assets: config.xlmEnabled ? ["USDC", "XLM"] : ["USDC"],
+    payment_assets: ["USDC"],
     openai_enabled: config.openai.enabled,
   });
 });
@@ -76,7 +76,7 @@ publicRouter.get("/api/catalog", (_req, res) => {
   res.json({
     service: config.platformName,
     public_base_url: config.publicBaseUrl,
-    payment_assets: config.xlmEnabled ? ["USDC", "XLM"] : ["USDC"],
+    payment_assets: ["USDC"],
     openai_enabled: config.openai.enabled,
     services: catalog.services,
     endpoints: catalog.publishedEndpoints.map((endpoint) => ({
@@ -86,9 +86,7 @@ publicRouter.get("/api/catalog", (_req, res) => {
       path: endpoint.fullPath,
       network: endpoint.network,
       price_usd: endpoint.priceUsd,
-      payment_assets: endpoint.networkConfig.xlmContractAddress
-        ? ["USDC", "XLM"]
-        : ["USDC"],
+      payment_assets: getRoutePaymentAssets(endpoint.networkConfig),
       response_type: endpoint.responseType,
       description: endpoint.description,
     })),
@@ -114,7 +112,10 @@ publicRouter.get("/.well-known/x402", (_req, res) => {
         },
       ];
 
-      if (endpoint.networkConfig.xlmContractAddress) {
+      if (
+        getRoutePaymentAssets(endpoint.networkConfig).includes("XLM") &&
+        endpoint.networkConfig.xlmContractAddress
+      ) {
         payments.push({
           protocol: "x402",
           scheme: "exact",

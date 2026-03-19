@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { config } from "../config.js";
+import { config, getRoutePaymentAssets } from "../config.js";
 import { createChatCompletion } from "../services/openai.js";
 import { parseChatRequest } from "../utils/validate.js";
 
@@ -14,7 +14,7 @@ export function createChatRouter() {
       network: "mainnet",
       paid: true,
       price_usd: config.prices.chat,
-      assets: ["USDC", "XLM"],
+      assets: getRoutePaymentAssets("mainnet"),
       data,
     });
   });

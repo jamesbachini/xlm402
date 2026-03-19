@@ -1,8 +1,9 @@
-import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactStellarScheme } from "@x402/stellar/exact/server";
 import { convertToTokenAmount, DEFAULT_TOKEN_DECIMALS } from "@x402/stellar";
-import { config } from "../config.js";
+import { config, getRoutePaymentAssets } from "../config.js";
+import { createPaymentMiddleware } from "./payment.js";
 import { buildPlatformCatalog } from "../platform/catalog.js";
 import { usdToXlm } from "../services/xlmPrice.js";
 
@@ -66,7 +67,7 @@ export async function createX402Middleware() {
         payTo: string;
       }> = [usdcOption];
 
-      if (networkConfig.xlmContractAddress) {
+      if (getRoutePaymentAssets(networkConfig).includes("XLM") && networkConfig.xlmContractAddress) {
         const xlmContract = networkConfig.xlmContractAddress;
         accepts.push({
           scheme: "exact",
@@ -91,7 +92,10 @@ export async function createX402Middleware() {
               { asset: "USDC", price: endpoint.priceUsd },
             ];
 
-            if (networkConfig.xlmContractAddress) {
+            if (
+              getRoutePaymentAssets(networkConfig).includes("XLM") &&
+              networkConfig.xlmContractAddress
+            ) {
               try {
                 const xlmPrice = await usdToXlm(endpoint.priceUsd);
                 assets.push({ asset: "XLM", price: xlmPrice });
@@ -114,6 +118,27 @@ export async function createX402Middleware() {
               },
             };
           },
+          settlementFailedResponseBody: async (
+            _context: unknown,
+            settleResult: {
+              errorMessage?: string;
+              errorReason?: string;
+              transaction?: string;
+            },
+          ) => ({
+            contentType: "application/json",
+            body: {
+              error: "payment_settlement_failed",
+              message:
+                settleResult.errorMessage ||
+                settleResult.errorReason ||
+                "Payment settlement failed",
+              reason: settleResult.errorReason,
+              route: endpoint.fullPath,
+              network: endpoint.network,
+              transaction: settleResult.transaction || undefined,
+            },
+          }),
         },
       ];
     }),
@@ -123,5 +148,23 @@ export async function createX402Middleware() {
     .register(mainnet.stellarNetwork, new ExactStellarScheme())
     .register(testnet.stellarNetwork, new ExactStellarScheme());
 
-  return paymentMiddleware(routes, resourceServer);
+  resourceServer.onVerifyFailure(async ({ error, requirements }) => {
+    console.error("[x402] verify failure", {
+      network: requirements.network,
+      asset: requirements.asset,
+      payTo: requirements.payTo,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+
+  resourceServer.onSettleFailure(async ({ error, requirements }) => {
+    console.error("[x402] settle failure", {
+      network: requirements.network,
+      asset: requirements.asset,
+      payTo: requirements.payTo,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+
+  return createPaymentMiddleware(routes, resourceServer);
 }

@@ -439,8 +439,7 @@ export function renderDocsPage(catalog: PlatformCatalog) {
   "message": "This endpoint requires x402 payment",
   "price_usd": "0.01",
   "assets": [
-    { "asset": "USDC", "price": "0.01" },
-    { "asset": "XLM", "price": "<dynamic>" }
+    { "asset": "USDC", "price": "0.01" }
   ],
   "network": "mainnet",
   "pay_to": "${config.networks.mainnet.payToAddress}",
@@ -452,7 +451,7 @@ export function renderDocsPage(catalog: PlatformCatalog) {
   "network": "mainnet",
   "paid": true,
   "price_usd": "0.01",
-  "assets": ["USDC", "XLM"],
+  "assets": ["USDC"],
   "data": { ... }
 }`;
 
@@ -519,7 +518,7 @@ X402_FACILITATOR_API_KEY=<your-openzeppelin-api-key>`;
               <p class="docs-p">
                 xlm402 provides paid API services over the
                 <a href="https://www.x402.org/" target="_blank" rel="noopener noreferrer">x402 payment protocol</a>
-                on the Stellar network. Every endpoint accepts USDC and XLM payments
+                on the Stellar network. Mainnet routes currently accept USDC, while testnet routes expose USDC and XLM,
                 with no API keys or subscriptions required.
               </p>
               <div class="docs-steps">
@@ -683,7 +682,7 @@ curl ${config.publicBaseUrl}/weather/current?latitude=51.5&longitude=-0.1`)}
                 { name: "network", detail: "Network label: mainnet or testnet." },
                 { name: "paid", detail: "Boolean, true on successful paid responses." },
                 { name: "price_usd", detail: "USD price string for the route." },
-                { name: "assets", detail: "Accepted settlement assets (USDC, XLM)." },
+                { name: "assets", detail: "Accepted settlement assets for that route and network." },
                 { name: "data", detail: "Endpoint-specific payload." },
               ])}
               <div class="docs-callout">

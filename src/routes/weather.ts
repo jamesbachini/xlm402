@@ -1,5 +1,5 @@
 import { Router } from "express";
-import type { NetworkLabel } from "../config.js";
+import { getRoutePaymentAssets, type NetworkLabel } from "../config.js";
 import { getArchive, getCurrentWeather, getForecast } from "../services/openMeteo.js";
 import { buildHistorySummary } from "../services/weatherSummary.js";
 import {
@@ -27,7 +27,7 @@ function wrapPaidResponse(data: unknown, network: NetworkLabel, priceUsd: string
     network,
     paid: true,
     price_usd: priceUsd,
-    assets: ["USDC", "XLM"],
+    assets: getRoutePaymentAssets(network),
     data,
   };
 }

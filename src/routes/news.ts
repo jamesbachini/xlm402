@@ -1,5 +1,5 @@
 import { Router } from "express";
-import type { NetworkLabel } from "../config.js";
+import { getRoutePaymentAssets, type NetworkLabel } from "../config.js";
 import { getLatestNewsByCategory } from "../services/news.js";
 import { parseNewsCategory, parsePositiveInteger } from "../utils/validate.js";
 
@@ -8,7 +8,7 @@ function wrapPaidResponse(data: unknown, network: NetworkLabel, priceUsd: string
     network,
     paid: true,
     price_usd: priceUsd,
-    assets: ["USDC", "XLM"],
+    assets: getRoutePaymentAssets(network),
     data,
   };
 }

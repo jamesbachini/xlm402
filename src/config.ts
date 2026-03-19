@@ -313,3 +313,20 @@ export const config: Config = {
     imageModel: process.env.OPENAI_IMAGE_MODEL?.trim() || fileConfig.openai.imageModel,
   },
 };
+
+export function getRoutePaymentAssets(
+  network: NetworkLabel | PaymentNetworkConfig,
+): Array<"USDC" | "XLM"> {
+  const networkConfig =
+    typeof network === "string" ? config.networks[network] : network;
+
+  if (
+    networkConfig.label === "testnet" &&
+    typeof networkConfig.xlmContractAddress === "string" &&
+    networkConfig.xlmContractAddress.length > 0
+  ) {
+    return ["USDC", "XLM"];
+  }
+
+  return ["USDC"];
+}
