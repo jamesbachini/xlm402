@@ -144,14 +144,6 @@ body {
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
 }
-.hero h1 .gradient-text {
-  background: linear-gradient(135deg, var(--accent), var(--purple), var(--pink), var(--accent));
-  background-size: 300% 300%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: gradient-shift 6s ease infinite;
-}
 
 /* ── Floating orbs in hero ── */
 .hero-orbs {
@@ -407,6 +399,7 @@ a { color: inherit; text-decoration: none; }
   color: var(--accent);
   line-height: 1;
   gap: 1px;
+  opacity: 0.2;
 }
 
 .logo-icon .logo-xlm {
@@ -437,6 +430,8 @@ a { color: inherit; text-decoration: none; }
 
 .logo-text .logo-dot-com {
   color: var(--text);
+  font-size: 0.6em;
+  opacity: 0.5;
 }
 
 .nav-links {
@@ -484,6 +479,7 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
   margin-bottom: 28px;
+  opacity: 0.6;
 }
 
 .hero-badge .dot {
@@ -507,13 +503,7 @@ a { color: inherit; text-decoration: none; }
   line-height: 1.05;
   max-width: 800px;
   margin: 0 auto 24px;
-}
-
-.hero h1 .gradient-text {
-  background: linear-gradient(135deg, var(--accent), var(--purple), var(--pink));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  opacity: 0.1;
 }
 
 .hero-subtitle {
@@ -1629,13 +1619,12 @@ export function renderIndexPage(catalog: PlatformCatalog) {
           <div class="reveal">
             <div class="hero-badge">
               <span class="dot"></span>
-              Live on Stellar
+              LIVE ON THE STELLAR NETWORK
             </div>
           </div>
-          <h1 class="reveal reveal-delay-1">The <span class="gradient-text">x402 service catalogue</span> for Stellar</h1>
+          <h1 class="reveal reveal-delay-1">The x402 service catalogue for Stellar</h1>
           <p class="hero-subtitle reveal reveal-delay-2">
-            Browse premium APIs, pay with USDC or XLM on Stellar, and get instant access.
-            Built for developers, AI agents, and automated workflows.
+            THE DISCOVERY NETWORK FOR THE MACHINE ECONOMY ON STELLAR
           </p>
           <div class="hero-actions reveal reveal-delay-3">
             <a class="btn btn-primary" href="#catalogue">Browse catalogue</a>
