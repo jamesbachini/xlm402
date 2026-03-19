@@ -1363,36 +1363,112 @@ export function layout({
       const c = document.getElementById('starfield');
       if (!c) return;
       const ctx = c.getContext('2d');
-      let w, h, stars = [], mouse = {x: -1, y: -1};
-      const STAR_COUNT = Math.min(180, Math.floor(window.innerWidth * 0.12));
-      const COLORS = ['rgba(125,226,209,', 'rgba(167,139,250,', 'rgba(244,114,182,', 'rgba(240,246,252,'];
+      let w, h, stars = [], shootingStars = [], mouse = {x: -1, y: -1};
+      const STAR_COUNT = Math.min(260, Math.floor(window.innerWidth * 0.18));
+      const COLORS_RGB = [
+        [125,226,209],  /* cyan/teal */
+        [167,139,250],  /* purple */
+        [244,114,182],  /* pink */
+        [240,246,252],  /* white */
+        [100,200,255],  /* light blue */
+      ];
 
       function resize() {
         w = c.width = window.innerWidth;
         h = c.height = window.innerHeight;
       }
 
+      function makeStar() {
+        const depth = Math.random();  /* 0 = far, 1 = near */
+        const r = 0.2 + depth * 2.0;
+        const speed = 0.03 + depth * 0.14;
+        const rgb = COLORS_RGB[Math.floor(Math.random() * COLORS_RGB.length)];
+        return {
+          x: Math.random() * w,
+          y: Math.random() * h,
+          r: r,
+          depth: depth,
+          dx: (Math.random() - 0.5) * speed,
+          dy: (Math.random() - 0.5) * speed,
+          rgb: rgb,
+          phase: Math.random() * Math.PI * 2,
+          twinkleSpeed: 0.008 + Math.random() * 0.025,
+          /* occasional flare: random timer until next flare */
+          flareTimer: Math.random() * 600 + 200,
+          flareAlpha: 0,
+        };
+      }
+
       function initStars() {
         stars = [];
-        for (let i = 0; i < STAR_COUNT; i++) {
-          stars.push({
-            x: Math.random() * w,
-            y: Math.random() * h,
-            r: Math.random() * 1.5 + 0.3,
-            dx: (Math.random() - 0.5) * 0.15,
-            dy: (Math.random() - 0.5) * 0.15,
-            color: COLORS[Math.floor(Math.random() * COLORS.length)],
-            phase: Math.random() * Math.PI * 2,
-            twinkleSpeed: 0.01 + Math.random() * 0.02,
-          });
-        }
+        for (let i = 0; i < STAR_COUNT; i++) stars.push(makeStar());
+      }
+
+      function spawnShootingStar() {
+        const angle = Math.PI * 0.15 + Math.random() * Math.PI * 0.2;
+        const speed = 6 + Math.random() * 8;
+        const rgb = COLORS_RGB[Math.floor(Math.random() * COLORS_RGB.length)];
+        shootingStars.push({
+          x: Math.random() * w * 0.8,
+          y: Math.random() * h * 0.4,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1.0,
+          decay: 0.008 + Math.random() * 0.012,
+          len: 40 + Math.random() * 60,
+          rgb: rgb,
+        });
       }
 
       function draw(t) {
         ctx.clearRect(0, 0, w, h);
 
+        /* ── Shooting stars ── */
+        if (Math.random() < 0.003) spawnShootingStar();
+        for (let i = shootingStars.length - 1; i >= 0; i--) {
+          const ss = shootingStars[i];
+          ss.x += ss.vx;
+          ss.y += ss.vy;
+          ss.life -= ss.decay;
+          if (ss.life <= 0) { shootingStars.splice(i, 1); continue; }
+          const tailX = ss.x - (ss.vx / Math.sqrt(ss.vx*ss.vx + ss.vy*ss.vy)) * ss.len;
+          const tailY = ss.y - (ss.vy / Math.sqrt(ss.vx*ss.vx + ss.vy*ss.vy)) * ss.len;
+          const grad = ctx.createLinearGradient(ss.x, ss.y, tailX, tailY);
+          grad.addColorStop(0, 'rgba(' + ss.rgb.join(',') + ',' + (ss.life * 0.9) + ')');
+          grad.addColorStop(1, 'rgba(' + ss.rgb.join(',') + ',0)');
+          ctx.beginPath();
+          ctx.moveTo(ss.x, ss.y);
+          ctx.lineTo(tailX, tailY);
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          /* bright head */
+          ctx.beginPath();
+          ctx.arc(ss.x, ss.y, 1.5, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255,255,255,' + (ss.life * 0.8) + ')';
+          ctx.fill();
+        }
+
+        /* ── Stars ── */
         for (let i = 0; i < stars.length; i++) {
           const s = stars[i];
+
+          /* Mouse gravity: gently attract stars toward cursor */
+          if (mouse.x > 0) {
+            const gdx = mouse.x - s.x;
+            const gdy = mouse.y - s.y;
+            const gDist = Math.sqrt(gdx*gdx + gdy*gdy);
+            if (gDist < 200 && gDist > 1) {
+              const force = (1 - gDist / 200) * 0.015 * s.depth;
+              s.dx += (gdx / gDist) * force;
+              s.dy += (gdy / gDist) * force;
+            }
+          }
+
+          /* Dampen velocity so gravity doesn't accumulate forever */
+          s.dx *= 0.999;
+          s.dy *= 0.999;
+
           s.x += s.dx;
           s.y += s.dy;
           s.phase += s.twinkleSpeed;
@@ -1402,46 +1478,89 @@ export function layout({
           if (s.y < -10) s.y = h + 10;
           if (s.y > h + 10) s.y = -10;
 
-          const alpha = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(s.phase));
+          /* Flare effect: occasional bright pulse */
+          s.flareTimer--;
+          if (s.flareTimer <= 0) {
+            s.flareAlpha = 1.0;
+            s.flareTimer = Math.random() * 800 + 300;
+          }
+          if (s.flareAlpha > 0) s.flareAlpha *= 0.97;
+
+          const twinkle = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(s.phase));
+          const alpha = Math.min(1, twinkle + s.flareAlpha * 0.5);
+          const rgb = s.rgb;
+
+          /* Glow halo for brighter/larger stars */
+          if (s.r > 1.0) {
+            const glowR = s.r * (4 + s.flareAlpha * 6);
+            const glow = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, glowR);
+            glow.addColorStop(0, 'rgba(' + rgb.join(',') + ',' + (alpha * 0.25) + ')');
+            glow.addColorStop(1, 'rgba(' + rgb.join(',') + ',0)');
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, glowR, 0, Math.PI * 2);
+            ctx.fillStyle = glow;
+            ctx.fill();
+          }
+
+          /* Flare cross-spike for flaring stars */
+          if (s.flareAlpha > 0.2 && s.r > 0.8) {
+            const spikeLen = s.r * 6 * s.flareAlpha;
+            ctx.beginPath();
+            ctx.moveTo(s.x - spikeLen, s.y);
+            ctx.lineTo(s.x + spikeLen, s.y);
+            ctx.moveTo(s.x, s.y - spikeLen);
+            ctx.lineTo(s.x, s.y + spikeLen);
+            ctx.strokeStyle = 'rgba(' + rgb.join(',') + ',' + (s.flareAlpha * 0.4) + ')';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+
+          /* Star core */
           ctx.beginPath();
           ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-          ctx.fillStyle = s.color + alpha + ')';
+          ctx.fillStyle = 'rgba(' + rgb.join(',') + ',' + alpha + ')';
           ctx.fill();
         }
 
-        /* Draw connections near mouse */
+        /* ── Mouse connections ── */
         if (mouse.x > 0) {
-          const CONNECT_DIST = 120;
+          const CONNECT_DIST = 150;
           for (let i = 0; i < stars.length; i++) {
             const s = stars[i];
             const dx = s.x - mouse.x;
             const dy = s.y - mouse.y;
             const dist = Math.sqrt(dx*dx + dy*dy);
             if (dist < CONNECT_DIST) {
-              const a = (1 - dist / CONNECT_DIST) * 0.25;
+              const a = (1 - dist / CONNECT_DIST) * 0.3;
+              const grad = ctx.createLinearGradient(s.x, s.y, mouse.x, mouse.y);
+              grad.addColorStop(0, 'rgba(' + s.rgb.join(',') + ',' + a + ')');
+              grad.addColorStop(1, 'rgba(125,226,209,' + (a * 0.5) + ')');
               ctx.beginPath();
               ctx.moveTo(s.x, s.y);
               ctx.lineTo(mouse.x, mouse.y);
-              ctx.strokeStyle = 'rgba(125,226,209,' + a + ')';
-              ctx.lineWidth = 0.5;
+              ctx.strokeStyle = grad;
+              ctx.lineWidth = 0.6;
               ctx.stroke();
             }
           }
         }
 
-        /* Draw faint connections between nearby stars */
-        const STAR_CONNECT = 100;
+        /* ── Star-to-star connections ── */
+        const STAR_CONNECT = 110;
         for (let i = 0; i < stars.length; i++) {
           for (let j = i + 1; j < stars.length; j++) {
             const dx = stars[i].x - stars[j].x;
             const dy = stars[i].y - stars[j].y;
             const dist = Math.sqrt(dx*dx + dy*dy);
             if (dist < STAR_CONNECT) {
-              const a = (1 - dist / STAR_CONNECT) * 0.06;
+              const a = (1 - dist / STAR_CONNECT) * 0.07;
+              const grad = ctx.createLinearGradient(stars[i].x, stars[i].y, stars[j].x, stars[j].y);
+              grad.addColorStop(0, 'rgba(' + stars[i].rgb.join(',') + ',' + a + ')');
+              grad.addColorStop(1, 'rgba(' + stars[j].rgb.join(',') + ',' + a + ')');
               ctx.beginPath();
               ctx.moveTo(stars[i].x, stars[i].y);
               ctx.lineTo(stars[j].x, stars[j].y);
-              ctx.strokeStyle = 'rgba(125,226,209,' + a + ')';
+              ctx.strokeStyle = grad;
               ctx.lineWidth = 0.4;
               ctx.stroke();
             }
