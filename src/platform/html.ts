@@ -1,6 +1,55 @@
 import { config } from "../config.js";
 import { getUsdcAddress } from "@x402/stellar";
 import type { PlatformCatalog, PublishedEndpoint, ServiceDefinition } from "./catalog.js";
+import { NEWS_CATEGORIES } from "../services/newsFeeds.js";
+
+function renderDocsCodeBlock(label: string, code: string) {
+  return `
+    <div class="code-block docs-code-block">
+      <div class="code-block-header">
+        <div class="code-block-dot"></div>
+        <div class="code-block-dot"></div>
+        <div class="code-block-dot"></div>
+        <span class="code-block-label">${escapeHtml(label)}</span>
+      </div>
+      <pre>${escapeHtml(code)}</pre>
+    </div>
+  `;
+}
+
+function renderDocsFieldList(items: Array<{ name: string; detail: string }>) {
+  return `
+    <div class="docs-field-list">
+      ${items
+        .map(
+          (item) => `
+            <div class="docs-field-item">
+              <code>${escapeHtml(item.name)}</code>
+              <span>${escapeHtml(item.detail)}</span>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderDocsEndpointGroup(
+  title: string,
+  description: string,
+  endpoints: PublishedEndpoint[],
+) {
+  return `
+    <section class="docs-section">
+      <div class="section-label">${escapeHtml(title)}</div>
+      <h3 class="docs-subsection-title">${escapeHtml(title)}</h3>
+      <p class="docs-copy">${escapeHtml(description)}</p>
+      <div class="endpoints-grid">
+        ${endpoints.map((endpoint) => renderEndpointDetail(endpoint, config.publicBaseUrl)).join("")}
+      </div>
+    </section>
+  `;
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -1254,6 +1303,237 @@ a { color: inherit; text-decoration: none; }
   color: var(--accent);
 }
 
+.docs-hero {
+  padding: 48px 0 24px;
+}
+
+.docs-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  gap: 24px;
+  align-items: stretch;
+}
+
+.docs-hero-main,
+.docs-hero-side,
+.docs-shell,
+.docs-sidebar-card,
+.docs-content-card,
+.docs-stat-card,
+.docs-callout,
+.docs-field-list,
+.docs-field-item {
+  border-radius: var(--radius-lg);
+}
+
+.docs-hero-main,
+.docs-shell,
+.docs-sidebar-card,
+.docs-content-card,
+.docs-stat-card,
+.docs-callout {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  backdrop-filter: blur(16px);
+}
+
+.docs-hero-main {
+  padding: 32px;
+}
+
+.docs-hero-main h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3.25rem);
+  letter-spacing: -0.03em;
+  margin-bottom: 14px;
+}
+
+.docs-copy {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
+.docs-hero-side {
+  display: grid;
+  gap: 16px;
+}
+
+.docs-stat-card {
+  padding: 22px;
+}
+
+.docs-stat-value {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  margin-bottom: 6px;
+}
+
+.docs-stat-label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.docs-shell {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 24px;
+  padding: 24px;
+}
+
+.docs-sidebar {
+  position: sticky;
+  top: 90px;
+  align-self: start;
+  display: grid;
+  gap: 16px;
+}
+
+.docs-sidebar-card {
+  padding: 18px;
+}
+
+.docs-sidebar-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.docs-sidebar-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.docs-sidebar-links a {
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  transition: all 180ms var(--ease);
+}
+
+.docs-sidebar-links a:hover {
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+}
+
+.docs-main {
+  display: grid;
+  gap: 18px;
+}
+
+.docs-content-card {
+  padding: 28px;
+}
+
+.docs-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 2.5vw, 2.1rem);
+  letter-spacing: -0.03em;
+  margin-bottom: 10px;
+}
+
+.docs-subsection-title {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+}
+
+.docs-section + .docs-section {
+  margin-top: 10px;
+}
+
+.docs-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.docs-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.docs-mini-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  background: rgba(255,255,255,0.02);
+}
+
+.docs-mini-card h4 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+}
+
+.docs-mini-card p,
+.docs-mini-card li {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.docs-mini-card ul {
+  padding-left: 18px;
+}
+
+.docs-callout {
+  padding: 18px 20px;
+  margin-top: 18px;
+}
+
+.docs-callout h4 {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+}
+
+.docs-field-list {
+  display: grid;
+  gap: 8px;
+}
+
+.docs-field-item {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+}
+
+.docs-field-item span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.docs-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.docs-chip {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.docs-code-block pre {
+  max-height: none;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   .hero { padding: 48px 0 40px; }
@@ -1271,6 +1551,16 @@ a { color: inherit; text-decoration: none; }
   .endpoint-card-header { flex-direction: column; align-items: flex-start; }
   .endpoint-card-right { width: 100%; justify-content: space-between; }
   .how-grid { grid-template-columns: 1fr; }
+  .docs-hero-grid,
+  .docs-shell,
+  .docs-grid-2,
+  .docs-grid-3,
+  .docs-field-item {
+    grid-template-columns: 1fr;
+  }
+  .docs-sidebar {
+    position: static;
+  }
 }
 
 @media (max-width: 480px) {
@@ -2255,7 +2545,55 @@ export function renderServicePage(
 
 export function renderDocsPage(catalog: PlatformCatalog) {
   const endpoints = catalog.publishedEndpoints;
-  const networks = Array.from(new Set(endpoints.map((ep) => ep.network)));
+  const weatherEndpoints = endpoints.filter((ep) => ep.serviceId === "weather");
+  const newsEndpoints = endpoints.filter((ep) => ep.serviceId === "news");
+  const chatEndpoints = endpoints.filter((ep) => ep.serviceId === "chat");
+  const imageEndpoints = endpoints.filter((ep) => ep.serviceId === "image");
+  const publishedServices = Array.from(new Set(endpoints.map((ep) => ep.serviceId)));
+
+  const unpaidExample = `{
+  "error": "payment_required",
+  "message": "This endpoint requires x402 payment",
+  "price_usd": "0.01",
+  "assets": [
+    { "asset": "USDC", "price": "0.01" },
+    { "asset": "XLM", "price": "<dynamic>" }
+  ],
+  "network": "mainnet",
+  "pay_to": "${config.networks.mainnet.payToAddress}",
+  "facilitator_url": "${config.networks.mainnet.facilitatorUrl}",
+  "route": "/weather/current"
+}`;
+
+  const successEnvelopeExample = `{
+  "network": "mainnet",
+  "paid": true,
+  "price_usd": "0.01",
+  "assets": ["USDC", "XLM"],
+  "data": {
+    "endpoint_specific_payload": true
+  }
+}`;
+
+  const catalogExample = `curl ${config.publicBaseUrl}/api/catalog
+curl ${config.publicBaseUrl}/.well-known/x402
+curl ${config.publicBaseUrl}/supported
+curl ${config.publicBaseUrl}/health`;
+
+  const mcpCodexExample = `npm install
+cp .env.example .env
+npm run dev
+
+codex mcp add x402-stellar -- npm --silent --prefix /absolute/path/to/x402-mcp-stellar run dev`;
+
+  const mcpEnvExample = `STELLAR_SECRET_KEY=S...
+STELLAR_NETWORK=stellar:testnet
+
+# mainnet alternative
+STELLAR_NETWORK=stellar:pubnet
+STELLAR_RPC_URL=https://rpc.lightsail.network/
+X402_FACILITATOR_URL=https://channels.openzeppelin.com/x402
+X402_FACILITATOR_API_KEY=<your-openzeppelin-api-key>`;
 
   return layout({
     title: "Docs | xlm402.com",
@@ -2265,45 +2603,293 @@ export function renderDocsPage(catalog: PlatformCatalog) {
       <div class="container">
         ${renderNav("docs")}
 
-        <section class="section" style="padding-top: 48px;">
-          <div class="section-label">Documentation</div>
-          <h2 class="section-title">API Reference</h2>
-          <p class="section-subtitle">
-            All routes are protected by x402. Mainnet routes live at the root path.
-            Testnet mirrors weather under <code>/testnet</code>. AI services are mainnet only.
-          </p>
-
-          <div class="filter-bar">
-            <button class="filter-btn" data-network-filter="all" aria-pressed="true" onclick="filterEndpoints(this)">All routes</button>
-            ${networks.map((n) => `<button class="filter-btn" data-network-filter="${escapeHtml(n)}" aria-pressed="false" onclick="filterEndpoints(this)">${escapeHtml(n)}</button>`).join("")}
-          </div>
-
-          <div class="endpoints-grid">
-            ${endpoints.map((ep) => renderEndpointDetail(ep, config.publicBaseUrl)).join("")}
+        <section class="docs-hero">
+          <div class="docs-hero-grid">
+            <div class="docs-hero-main">
+              <div class="section-label">Documentation</div>
+              <h1>Integration guide and API reference</h1>
+              <p class="docs-copy">
+                xlm402 exposes paid weather, news, chat, and image APIs over Stellar x402 payments.
+                This page documents setup, payment flow, discovery endpoints, MCP integration, and
+                the request and response formats for every published route without changing the rest of the site.
+              </p>
+              <div class="docs-chip-row">
+                <span class="docs-chip">${endpoints.length} published endpoints</span>
+                <span class="docs-chip">mainnet + testnet</span>
+                <span class="docs-chip">x402 discovery</span>
+                <span class="docs-chip">Freighter compatible</span>
+              </div>
+            </div>
+            <div class="docs-hero-side">
+              <div class="docs-stat-card">
+                <div class="docs-stat-value">${publishedServices.length}</div>
+                <div class="docs-stat-label">service groups documented</div>
+              </div>
+              <div class="docs-stat-card">
+                <div class="docs-stat-value">USDC + XLM</div>
+                <div class="docs-stat-label">settlement assets published by x402 metadata</div>
+              </div>
+              <div class="docs-stat-card">
+                <div class="docs-stat-value">${config.openai.enabled ? "AI enabled" : "AI optional"}</div>
+                <div class="docs-stat-label">chat and image routes publish when <code>OPENAI_API_KEY</code> is configured</div>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section class="section">
-          <div class="integration-panel">
-            <div>
-              <div class="section-label">Integration Notes</div>
-              <h3>Discovery &amp; Payment Flow</h3>
-              <ul>
-                <li><code>/.well-known/x402</code> returns the published route list with price, network, and pay-to metadata.</li>
-                <li><code>/supported</code> returns facilitator support by network so clients can inspect enabled schemes.</li>
-                <li>402 responses include network-specific payment requirements for the route requested.</li>
-                <li>Chat and image services activate automatically when <code>OPENAI_API_KEY</code> is configured.</li>
-              </ul>
-            </div>
-            <div>
-              <div class="section-label">Platform Details</div>
-              <h3>Configuration</h3>
-              <ul>
-                <li>Text model: <code>${escapeHtml(config.openai.chatModel)}</code></li>
-                <li>Image model: <code>${escapeHtml(config.openai.imageModel)}</code></li>
-                <li>Base URL: <code>${escapeHtml(config.publicBaseUrl)}</code></li>
-                <li>AI services: ${config.openai.enabled ? "Enabled" : "Pending API key"}</li>
-              </ul>
+        <section class="section" style="padding-top: 0;">
+          <div class="docs-shell">
+            <aside class="docs-sidebar">
+              <div class="docs-sidebar-card">
+                <div class="docs-sidebar-title">On This Page</div>
+                <div class="docs-sidebar-links">
+                  <a href="#overview">Overview</a>
+                  <a href="#quickstart">Quickstart</a>
+                  <a href="#payment-flow">Payment Flow</a>
+                  <a href="#mcp">MCP Setup</a>
+                  <a href="#discovery">Discovery Endpoints</a>
+                  <a href="#formats">JSON Formats</a>
+                  <a href="#weather-reference">Weather Reference</a>
+                  <a href="#news-reference">News Reference</a>
+                  <a href="#chat-reference">Chat Reference</a>
+                  <a href="#image-reference">Image Reference</a>
+                </div>
+              </div>
+              <div class="docs-sidebar-card">
+                <div class="docs-sidebar-title">Published Categories</div>
+                <div class="docs-copy">News routes support: ${escapeHtml(NEWS_CATEGORIES.join(", "))}</div>
+              </div>
+            </aside>
+
+            <div class="docs-main">
+              <div class="docs-content-card" id="overview">
+                <div class="section-label">Overview</div>
+                <h2 class="docs-title">Platform structure</h2>
+                <p class="docs-copy">
+                  Mainnet routes live at the root path. Testnet mirrors weather and news under <code>/testnet</code>.
+                  Every paid route returns JSON and is discoverable through <code>/api/catalog</code> and
+                  <code>/.well-known/x402</code>. Service pages remain catalogue-oriented; this page is the
+                  comprehensive documentation surface.
+                </p>
+                <div class="docs-grid-3" style="margin-top:18px;">
+                  <div class="docs-mini-card">
+                    <h4>Weather</h4>
+                    <p>Current, forecast, archive, and history-summary routes on both networks.</p>
+                  </div>
+                  <div class="docs-mini-card">
+                    <h4>News</h4>
+                    <p>Category-based normalized feed aggregation on both networks.</p>
+                  </div>
+                  <div class="docs-mini-card">
+                    <h4>AI</h4>
+                    <p>Chat and image generation routes on mainnet when OpenAI is configured.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="docs-content-card" id="quickstart">
+                <div class="section-label">Quickstart</div>
+                <h2 class="docs-title">Run locally</h2>
+                <div class="docs-grid-2">
+                  <div>
+                    ${renderDocsCodeBlock(
+                      "Local server",
+                      `cp .env.example .env
+npm install
+npm run dev`,
+                    )}
+                  </div>
+                  <div>
+                    ${renderDocsCodeBlock("Discovery commands", catalogExample)}
+                  </div>
+                </div>
+                <div class="docs-callout">
+                  <h4>Runtime config</h4>
+                  <p class="docs-copy">
+                    Public runtime settings live in <code>config/app.json</code>. Secrets stay in <code>.env</code>.
+                    Current configured models are <code>${escapeHtml(config.openai.chatModel)}</code> for chat and
+                    <code>${escapeHtml(config.openai.imageModel)}</code> for image generation.
+                  </p>
+                </div>
+              </div>
+
+              <div class="docs-content-card" id="payment-flow">
+                <div class="section-label">Payments</div>
+                <h2 class="docs-title">x402 request lifecycle</h2>
+                <div class="docs-grid-2">
+                  <div class="docs-mini-card">
+                    <h4>1. Unpaid request</h4>
+                    <p>Call any paid route normally. The server responds with HTTP 402 and route-specific payment requirements.</p>
+                  </div>
+                  <div class="docs-mini-card">
+                    <h4>2. Payment metadata</h4>
+                    <p>The 402 body includes network, route, pay-to address, facilitator URL, and accepted assets.</p>
+                  </div>
+                  <div class="docs-mini-card">
+                    <h4>3. Sign and retry</h4>
+                    <p>An x402 client creates the Stellar payment proof and retries the same request with payment headers.</p>
+                  </div>
+                  <div class="docs-mini-card">
+                    <h4>4. Paid response</h4>
+                    <p>Successful requests return a standard envelope with <code>network</code>, <code>paid</code>, <code>price_usd</code>, <code>assets</code>, and endpoint <code>data</code>.</p>
+                  </div>
+                </div>
+                <div class="docs-grid-2" style="margin-top:18px;">
+                  <div>${renderDocsCodeBlock("402 body example", unpaidExample)}</div>
+                  <div>${renderDocsCodeBlock("Successful paid envelope", successEnvelopeExample)}</div>
+                </div>
+              </div>
+
+              <div class="docs-content-card" id="mcp">
+                <div class="section-label">MCP</div>
+                <h2 class="docs-title">Set up the Stellar MCP client</h2>
+                <p class="docs-copy">
+                  To let Codex or Claude pay for these routes automatically, pair this server with the
+                  <a href="https://github.com/jamesbachini/x402-mcp-stellar" target="_blank" rel="noopener noreferrer">x402-mcp-stellar</a>
+                  project. The MCP server runs over stdio and exposes wallet info, facilitator capability checks, and
+                  a generic paid fetch tool.
+                </p>
+                <div class="docs-grid-2" style="margin-top:18px;">
+                  <div>${renderDocsCodeBlock("Codex MCP registration", mcpCodexExample)}</div>
+                  <div>${renderDocsCodeBlock("MCP environment", mcpEnvExample)}</div>
+                </div>
+                <div class="docs-callout">
+                  <h4>MCP prerequisites</h4>
+                  <p class="docs-copy">
+                    You need Node.js 20+, a funded Stellar wallet, this resource server running, and a reachable facilitator.
+                    Testnet is the simplest starting point. Mainnet commonly uses the OpenZeppelin relayer with an API key.
+                  </p>
+                </div>
+              </div>
+
+              <div class="docs-content-card" id="discovery">
+                <div class="section-label">Discovery</div>
+                <h2 class="docs-title">Machine-readable endpoints</h2>
+                <div class="docs-grid-2">
+                  <div class="docs-mini-card">
+                    <h4><code>/api/catalog</code></h4>
+                    <p>Service definitions, published routes, prices, response types, and network-specific path metadata.</p>
+                  </div>
+                  <div class="docs-mini-card">
+                    <h4><code>/.well-known/x402</code></h4>
+                    <p>x402 manifest with route descriptions and payment options for discovery clients.</p>
+                  </div>
+                  <div class="docs-mini-card">
+                    <h4><code>/supported</code></h4>
+                    <p>Facilitator capability information for mainnet and testnet.</p>
+                  </div>
+                  <div class="docs-mini-card">
+                    <h4><code>/health</code></h4>
+                    <p>Service status, published route count, networks, payment assets, and AI enablement.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="docs-content-card" id="formats">
+                <div class="section-label">Formats</div>
+                <h2 class="docs-title">Shared JSON conventions</h2>
+                ${renderDocsFieldList([
+                  { name: "network", detail: "Network label for the route: mainnet or testnet." },
+                  { name: "paid", detail: "Boolean set to true on successful paid responses." },
+                  { name: "price_usd", detail: "USD price string configured for the route." },
+                  { name: "assets", detail: "Accepted settlement assets. Typically USDC and XLM." },
+                  { name: "data", detail: "Endpoint-specific payload returned after payment succeeds." },
+                ])}
+                <div class="docs-callout">
+                  <h4>Error format</h4>
+                  <p class="docs-copy">
+                    Validation and server errors use a compact JSON shape:
+                    <code>{ "error": "invalid_request", "message": "..." }</code>.
+                    The most common validation failures are bad coordinates, invalid date ranges, unsupported field lists,
+                    or invalid body parameters.
+                  </p>
+                </div>
+              </div>
+
+              <div class="docs-content-card" id="weather-reference">
+                <div class="section-label">Reference</div>
+                <h2 class="docs-title">Weather endpoints</h2>
+                <p class="docs-copy">
+                  Weather is published on both mainnet and testnet. Forecast and archive routes accept field selection
+                  through comma-separated query parameters, while history-summary returns a compact derived summary object.
+                </p>
+                ${renderDocsFieldList([
+                  { name: "latitude", detail: "Required number between -90 and 90." },
+                  { name: "longitude", detail: "Required number between -180 and 180." },
+                  { name: "timezone", detail: "Optional IANA timezone or auto." },
+                  { name: "forecast_days", detail: "Forecast only. Optional integer between 1 and 16." },
+                  { name: "start_date / end_date", detail: "Archive endpoints only. YYYY-MM-DD and max 366 day span." },
+                ])}
+                ${renderDocsEndpointGroup(
+                  "Weather API",
+                  "Current conditions, forecasts, archives, and compact historical summaries.",
+                  weatherEndpoints,
+                )}
+              </div>
+
+              <div class="docs-content-card" id="news-reference">
+                <div class="section-label">Reference</div>
+                <h2 class="docs-title">News endpoints</h2>
+                <p class="docs-copy">
+                  News endpoints normalize multiple RSS and Atom feeds into one stable response shape with
+                  <code>category</code>, <code>requested_at</code>, <code>story_count</code>, <code>source_count</code>,
+                  <code>sources</code>, <code>errors</code>, and <code>stories</code>.
+                </p>
+                ${renderDocsFieldList([
+                  { name: "category", detail: `Path parameter. One of: ${NEWS_CATEGORIES.join(", ")}.` },
+                  { name: "limit", detail: "Optional integer between 1 and 30. Defaults to 12." },
+                  { name: "max_per_feed", detail: "Optional integer between 1 and 10. Defaults to 6." },
+                  { name: "stories[]", detail: "Each story includes title, url, summary, published_at, source, and category." },
+                ])}
+                ${renderDocsEndpointGroup(
+                  "News API",
+                  "Category-based latest story aggregation with standardized story objects.",
+                  newsEndpoints,
+                )}
+              </div>
+
+              <div class="docs-content-card" id="chat-reference">
+                <div class="section-label">Reference</div>
+                <h2 class="docs-title">Chat endpoint</h2>
+                <p class="docs-copy">
+                  The chat route is mainnet-only and published when <code>OPENAI_API_KEY</code> is configured.
+                  It returns a wrapped Responses API payload with <code>id</code>, <code>model</code>, <code>output_text</code>,
+                  <code>status</code>, <code>incomplete_details</code>, and <code>usage</code>.
+                </p>
+                ${renderDocsFieldList([
+                  { name: "prompt", detail: "Required string up to 32000 characters." },
+                  { name: "system", detail: "Optional instruction string up to 12000 characters." },
+                  { name: "max_output_tokens", detail: "Optional integer between 64 and 4096. Defaults to 800." },
+                  { name: "reasoning_effort", detail: "Optional one of none, low, medium, high, xhigh." },
+                  { name: "metadata", detail: "Optional object of up to 16 string key/value pairs." },
+                ])}
+                ${renderDocsEndpointGroup(
+                  "Chat API",
+                  "Paid text generation against the configured GPT model.",
+                  chatEndpoints,
+                )}
+              </div>
+
+              <div class="docs-content-card" id="image-reference">
+                <div class="section-label">Reference</div>
+                <h2 class="docs-title">Image endpoint</h2>
+                <p class="docs-copy">
+                  The image route returns base64-encoded generated image data inside JSON. Transparent backgrounds
+                  require <code>png</code> or <code>webp</code> output.
+                </p>
+                ${renderDocsFieldList([
+                  { name: "prompt", detail: "Required prompt string up to 32000 characters." },
+                  { name: "size", detail: "Optional: auto, 1024x1024, 1536x1024, or 1024x1536." },
+                  { name: "quality", detail: "Optional: auto, low, medium, or high." },
+                  { name: "background", detail: "Optional: auto, opaque, or transparent." },
+                  { name: "output_format", detail: "Optional: jpeg, png, or webp." },
+                ])}
+                ${renderDocsEndpointGroup(
+                  "Image API",
+                  "Prompt-to-image generation with base64 output payloads.",
+                  imageEndpoints,
+                )}
+              </div>
             </div>
           </div>
         </section>
