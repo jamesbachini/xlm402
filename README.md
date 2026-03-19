@@ -36,14 +36,9 @@ Paid weather:
 
 Paid news:
 
-- `GET /news/tech`
-- `GET /news/ai`
-- `GET /news/global`
-- `GET /news/economics`
-- `GET /testnet/news/tech`
-- `GET /testnet/news/ai`
-- `GET /testnet/news/global`
-- `GET /testnet/news/economics`
+- `GET /news/:category`
+- `GET /testnet/news/:category`
+- Categories: `tech`, `ai`, `global`, `economics`, `blockchain`, `politics`, `sports`, `business`, `science`, `entertainment`, `gaming`, `security`, `health`
 
 Paid AI:
 

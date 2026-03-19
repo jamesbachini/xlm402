@@ -1,4 +1,5 @@
 import { config, type NetworkLabel, type PaymentNetworkConfig, type ServiceId } from "../config.js";
+import { NEWS_CATEGORIES, NEWS_CATEGORY_DETAILS } from "../services/newsFeeds.js";
 
 export type HttpMethod = "GET" | "POST";
 
@@ -67,7 +68,7 @@ const serviceDefinitions: ServiceDefinition[] = [
       "Curated news endpoints that fetch current stories from vetted upstream RSS feeds, normalize them into a stable JSON shape, and expose them through x402 payments on both Stellar networks.",
     audience: "Agents, dashboards, research tools, automation, consumer apps",
     highlights: [
-      "Category routes for tech, AI, global, and economics",
+      `${NEWS_CATEGORIES.length} category routes spanning tech, business, politics, sports, blockchain, science, security, health, and more`,
       "Mixed multi-source story output with standardized fields",
       "Feed-level error reporting alongside successful stories",
       "Mainnet and testnet route families",
@@ -195,70 +196,22 @@ const endpointDefinitions: ServiceEndpoint[] = [
       "timezone=auto",
     ],
   },
-  {
-    id: "news-tech",
+  ...NEWS_CATEGORIES.map((category): ServiceEndpoint => ({
+    id: `news-${category}`,
     serviceId: "news",
     method: "GET",
-    route: "/news/tech",
-    description: "Latest technology stories mixed from multiple vetted RSS feeds.",
+    route: `/news/${category}`,
+    description: NEWS_CATEGORY_DETAILS[category].description,
     responseType: "application/json",
     availability: ["mainnet", "testnet"],
     priceByNetwork: {
       mainnet: config.prices.news,
       testnet: config.prices.news,
     },
-    requestExample: `curl "${config.publicBaseUrl}/news/tech?limit=12&max_per_feed=6"`,
-    requestInputExample: `{\n  "category": "tech",\n  "limit": 12,\n  "max_per_feed": 6\n}`,
+    requestExample: `curl "${config.publicBaseUrl}/news/${category}?limit=12&max_per_feed=6"`,
+    requestInputExample: `{\n  "category": "${category}",\n  "limit": 12,\n  "max_per_feed": 6\n}`,
     querySchema: ["limit=1..30", "max_per_feed=1..10"],
-  },
-  {
-    id: "news-ai",
-    serviceId: "news",
-    method: "GET",
-    route: "/news/ai",
-    description: "Latest AI stories mixed from multiple vetted RSS feeds.",
-    responseType: "application/json",
-    availability: ["mainnet", "testnet"],
-    priceByNetwork: {
-      mainnet: config.prices.news,
-      testnet: config.prices.news,
-    },
-    requestExample: `curl "${config.publicBaseUrl}/news/ai?limit=12&max_per_feed=6"`,
-    requestInputExample: `{\n  "category": "ai",\n  "limit": 12,\n  "max_per_feed": 6\n}`,
-    querySchema: ["limit=1..30", "max_per_feed=1..10"],
-  },
-  {
-    id: "news-global",
-    serviceId: "news",
-    method: "GET",
-    route: "/news/global",
-    description: "Latest global news stories mixed from multiple vetted RSS feeds.",
-    responseType: "application/json",
-    availability: ["mainnet", "testnet"],
-    priceByNetwork: {
-      mainnet: config.prices.news,
-      testnet: config.prices.news,
-    },
-    requestExample: `curl "${config.publicBaseUrl}/news/global?limit=12&max_per_feed=6"`,
-    requestInputExample: `{\n  "category": "global",\n  "limit": 12,\n  "max_per_feed": 6\n}`,
-    querySchema: ["limit=1..30", "max_per_feed=1..10"],
-  },
-  {
-    id: "news-economics",
-    serviceId: "news",
-    method: "GET",
-    route: "/news/economics",
-    description: "Latest economics and business stories mixed from multiple vetted RSS feeds.",
-    responseType: "application/json",
-    availability: ["mainnet", "testnet"],
-    priceByNetwork: {
-      mainnet: config.prices.news,
-      testnet: config.prices.news,
-    },
-    requestExample: `curl "${config.publicBaseUrl}/news/economics?limit=12&max_per_feed=6"`,
-    requestInputExample: `{\n  "category": "economics",\n  "limit": 12,\n  "max_per_feed": 6\n}`,
-    querySchema: ["limit=1..30", "max_per_feed=1..10"],
-  },
+  })),
   {
     id: "chat-respond",
     serviceId: "chat",

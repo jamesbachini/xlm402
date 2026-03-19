@@ -1629,9 +1629,9 @@ export function renderIndexPage(catalog: PlatformCatalog) {
               LIVE ON THE STELLAR NETWORK
             </div>
           </div>
-          <h1 class="reveal reveal-delay-1">The x402 service catalogue for Stellar</h1>
+          <h1 class="reveal reveal-delay-1">x402 on Stellar</h1>
           <p class="hero-subtitle reveal reveal-delay-2">
-            THE DISCOVERY NETWORK FOR THE MACHINE ECONOMY ON STELLAR
+            THE DISCOVERY NETWORK FOR THE STELLAR MACHINE ECONOMY
           </p>
           <div class="hero-actions reveal reveal-delay-3">
             <a class="btn btn-primary" href="#catalogue">Browse catalogue</a>
