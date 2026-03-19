@@ -1,5 +1,6 @@
 import { HttpError } from "./errors.js";
 import type { ChatRequest, ImageRequest } from "../services/openai.js";
+import { isNewsCategory, type NewsCategory } from "../services/newsFeeds.js";
 
 export const FORECAST_HOURLY_FIELDS = new Set([
   "temperature_2m",
@@ -236,6 +237,45 @@ export function parseOptionalFields(
   allowedFields: Set<string>,
 ): string[] | undefined {
   return parseFieldList(typeof query[fieldType] === "string" ? query[fieldType] : undefined, fieldType, allowedFields);
+}
+
+export function parsePositiveInteger(
+  value: unknown,
+  name: string,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value !== "string") {
+    throw new HttpError(400, "invalid_request", `${name} must be a string integer`);
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new HttpError(
+      400,
+      "invalid_request",
+      `${name} must be an integer between ${min} and ${max}`,
+    );
+  }
+
+  return parsed;
+}
+
+export function parseNewsCategory(value: string | undefined): NewsCategory {
+  if (!value || !isNewsCategory(value)) {
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "category must be one of: tech, ai, global, economics",
+    );
+  }
+
+  return value;
 }
 
 function ensureObject(value: unknown): Record<string, unknown> {

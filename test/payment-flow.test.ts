@@ -5,6 +5,7 @@ import { after, before, test } from "node:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { getUsdcAddress } from "@x402/stellar";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
+import { NEWS_FEEDS } from "../src/services/newsFeeds.ts";
 
 type JsonValue = Record<string, unknown> | unknown[];
 
@@ -28,6 +29,52 @@ let context: AppContext;
 let originalFetch: typeof fetch;
 let mainnetXlmContract: string;
 let testnetXlmContract: string;
+
+function buildRssFeed(items: Array<{
+  title: string;
+  link: string;
+  pubDate: string;
+  description: string;
+}>): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    ${items
+      .map(
+        (item) => `<item>
+      <title><![CDATA[${item.title}]]></title>
+      <link>${item.link}</link>
+      <pubDate>${item.pubDate}</pubDate>
+      <description><![CDATA[${item.description}]]></description>
+    </item>`,
+      )
+      .join("\n")}
+  </channel>
+</rss>`;
+}
+
+function buildAtomFeed(items: Array<{
+  title: string;
+  link: string;
+  published: string;
+  summary: string;
+}>): string {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Atom Feed</title>
+  ${items
+    .map(
+      (item) => `<entry>
+    <title>${item.title}</title>
+    <link rel="alternate" href="${item.link}" />
+    <published>${item.published}</published>
+    <summary>${item.summary}</summary>
+  </entry>`,
+    )
+    .join("\n")}
+</feed>`;
+}
 
 function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
@@ -96,6 +143,92 @@ before(async () => {
   originalFetch = globalThis.fetch.bind(globalThis);
   mainnetXlmContract = getUsdcAddress("stellar:testnet");
   testnetXlmContract = getUsdcAddress("stellar:pubnet");
+  const newsFeedXmlByUrl = new Map<string, string>([
+    [
+      NEWS_FEEDS.find((feed) => feed.id === "openai-news")!.feedUrl,
+      buildRssFeed([
+        {
+          title: "OpenAI launches a new model",
+          link: "https://example.com/openai-model",
+          pubDate: "Wed, 19 Mar 2026 10:00:00 GMT",
+          description: "OpenAI news item one",
+        },
+        {
+          title: "OpenAI publishes benchmark notes",
+          link: "https://example.com/openai-benchmarks",
+          pubDate: "Wed, 19 Mar 2026 08:00:00 GMT",
+          description: "OpenAI news item two",
+        },
+      ]),
+    ],
+    [
+      NEWS_FEEDS.find((feed) => feed.id === "google-ai")!.feedUrl,
+      buildAtomFeed([
+        {
+          title: "Google ships a new agent",
+          link: "https://example.com/google-agent",
+          published: "2026-03-19T11:00:00Z",
+          summary: "Google AI story one",
+        },
+        {
+          title: "Google updates multimodal search",
+          link: "https://example.com/google-search",
+          published: "2026-03-19T07:00:00Z",
+          summary: "Google AI story two",
+        },
+      ]),
+    ],
+    [
+      NEWS_FEEDS.find((feed) => feed.id === "hugging-face")!.feedUrl,
+      buildRssFeed([
+        {
+          title: "Hugging Face releases a compact model",
+          link: "https://example.com/hf-compact-model",
+          pubDate: "Wed, 19 Mar 2026 10:30:00 GMT",
+          description: "Hugging Face story one",
+        },
+        {
+          title: "Hugging Face adds new evaluation tools",
+          link: "https://example.com/hf-eval-tools",
+          pubDate: "Wed, 19 Mar 2026 06:00:00 GMT",
+          description: "Hugging Face story two",
+        },
+      ]),
+    ],
+    [
+      NEWS_FEEDS.find((feed) => feed.id === "bbc-world")!.feedUrl,
+      buildRssFeed([
+        {
+          title: "Global headline one",
+          link: "https://example.com/global-one",
+          pubDate: "Wed, 19 Mar 2026 10:00:00 GMT",
+          description: "Global story one",
+        },
+      ]),
+    ],
+    [
+      NEWS_FEEDS.find((feed) => feed.id === "al-jazeera")!.feedUrl,
+      buildRssFeed([
+        {
+          title: "Global headline two",
+          link: "https://example.com/global-two",
+          pubDate: "Wed, 19 Mar 2026 09:30:00 GMT",
+          description: "Global story two",
+        },
+      ]),
+    ],
+    [
+      NEWS_FEEDS.find((feed) => feed.id === "wsj-world")!.feedUrl,
+      buildRssFeed([
+        {
+          title: "Global headline three",
+          link: "https://example.com/global-three",
+          pubDate: "Wed, 19 Mar 2026 09:00:00 GMT",
+          description: "Global story three",
+        },
+      ]),
+    ],
+  ]);
 
   globalThis.fetch = async (input, init) => {
     const url =
@@ -110,6 +243,16 @@ before(async () => {
         status: 200,
         headers: {
           "content-type": "application/json",
+        },
+      });
+    }
+
+    const newsXml = newsFeedXmlByUrl.get(url);
+    if (newsXml) {
+      return new Response(newsXml, {
+        status: 200,
+        headers: {
+          "content-type": "application/rss+xml",
         },
       });
     }
@@ -336,6 +479,54 @@ test("weather routes expose USDC and XLM payment requirements on mainnet and tes
   }
 });
 
+test("news routes expose USDC and XLM payment requirements on mainnet and testnet", async () => {
+  const client = new x402HTTPClient(new x402Client());
+  const cases = [
+    {
+      route: "/news/global",
+      url: `${context.appBaseUrl}/news/global?limit=3&max_per_feed=1`,
+      network: "stellar:pubnet",
+      payTo: process.env.MAINNET_PAY_TO_ADDRESS!,
+      xlmContract: mainnetXlmContract,
+    },
+    {
+      route: "/testnet/news/global",
+      url: `${context.appBaseUrl}/testnet/news/global?limit=3&max_per_feed=1`,
+      network: "stellar:testnet",
+      payTo: process.env.TESTNET_PAY_TO_ADDRESS!,
+      xlmContract: testnetXlmContract,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const unpaidResponse = await fetch(testCase.url);
+    assert.equal(unpaidResponse.status, 402);
+
+    const unpaidBody = (await unpaidResponse.json()) as Record<string, unknown>;
+    const paymentRequired = client.getPaymentRequiredResponse(
+      (name) => unpaidResponse.headers.get(name) ?? undefined,
+      unpaidBody,
+    );
+
+    assert.equal(unpaidBody.route, testCase.route);
+    assert.equal(paymentRequired.accepts.length, 2);
+
+    const usdcRequirement = paymentRequired.accepts.find(
+      (requirement) => requirement.asset === getUsdcAddress(testCase.network),
+    );
+    const xlmRequirement = paymentRequired.accepts.find(
+      (requirement) => requirement.asset === testCase.xlmContract,
+    );
+
+    assert.ok(usdcRequirement);
+    assert.ok(xlmRequirement);
+    assert.equal(usdcRequirement.network, testCase.network);
+    assert.equal(xlmRequirement.network, testCase.network);
+    assert.equal(usdcRequirement.payTo, testCase.payTo);
+    assert.equal(xlmRequirement.payTo, testCase.payTo);
+  }
+});
+
 test("paid weather route accepts a v2 retry and returns settlement headers", async () => {
   context.facilitatorRequests.verify.length = 0;
   context.facilitatorRequests.settle.length = 0;
@@ -480,4 +671,71 @@ test("XLM-selected retries settle against the configured XLM asset on both netwo
     assert.equal(requirements.asset, expectedContract);
     assert.equal(requirements.network, expectedNetwork);
   });
+});
+
+test("paid news route returns standardized mixed stories", async () => {
+  context.facilitatorRequests.verify.length = 0;
+  context.facilitatorRequests.settle.length = 0;
+
+  const url = `${context.appBaseUrl}/news/ai?limit=5&max_per_feed=2`;
+  const unpaidResponse = await fetch(url);
+  assert.equal(unpaidResponse.status, 402);
+
+  const unpaidBody = (await unpaidResponse.json()) as Record<string, unknown>;
+  const fakeSchemeClient = {
+    scheme: "exact",
+    async createPaymentPayload(x402Version: number) {
+      return {
+        x402Version,
+        payload: {
+          provider: "integration-test",
+        },
+      };
+    },
+  };
+
+  const client = new x402HTTPClient(
+    new x402Client().register("stellar:*", fakeSchemeClient),
+  );
+  const paymentRequired = client.getPaymentRequiredResponse(
+    (name) => unpaidResponse.headers.get(name) ?? undefined,
+    unpaidBody,
+  );
+  const paymentPayload = await client.createPaymentPayload(paymentRequired);
+
+  const paidResponse = await fetch(url, {
+    headers: client.encodePaymentSignatureHeader(paymentPayload),
+  });
+
+  assert.equal(paidResponse.status, 200);
+
+  const paidBody = (await paidResponse.json()) as Record<string, unknown>;
+  assert.equal(paidBody.network, "mainnet");
+  assert.equal(paidBody.price_usd, "0.01");
+
+  const data = paidBody.data as Record<string, unknown>;
+  assert.equal(data.category, "ai");
+  assert.equal(data.story_count, 5);
+  assert.equal(data.source_count, 3);
+  assert.deepEqual(
+    (data.sources as Array<{ source: { id: string } }>).map((item) => item.source.id),
+    ["openai-news", "google-ai", "hugging-face"],
+  );
+
+  const stories = data.stories as Array<Record<string, unknown>>;
+  assert.equal(stories.length, 5);
+  assert.deepEqual(
+    stories.slice(0, 3).map((story) => (story.source as Record<string, unknown>).id),
+    ["google-ai", "hugging-face", "openai-news"],
+  );
+  assert.deepEqual(
+    Object.keys(stories[0]),
+    ["title", "url", "summary", "published_at", "source", "category"],
+  );
+  assert.equal(stories[0].category, "ai");
+  assert.equal(
+    (stories[0].source as Record<string, unknown>).feed_url,
+    NEWS_FEEDS.find((feed) => feed.id === "google-ai")!.feedUrl,
+  );
+  assert.match(String(stories[0].published_at), /^2026-03-19T11:00:00\.000Z$/);
 });

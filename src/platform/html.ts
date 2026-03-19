@@ -15,6 +15,8 @@ function serviceIcon(id: string): string {
   switch (id) {
     case "weather":
       return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+    case "news":
+      return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20"/><path d="M5 2h11a2 2 0 0 1 2 2v18"/><path d="M5 2a2 2 0 0 0-2 2v13.5A2.5 2.5 0 0 0 5.5 20H18"/><path d="M8 7h6"/><path d="M8 11h8"/><path d="M8 15h5"/></svg>`;
     case "chat":
       return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.4V20l3-2 3 2v-2.6c2.9-1.1 5-4 5-7.4a8 8 0 0 0-8-8z"/><circle cx="10" cy="10" r="1"/><circle cx="14" cy="10" r="1"/></svg>`;
     case "image":
@@ -28,6 +30,8 @@ function serviceAccentColor(id: string): string {
   switch (id) {
     case "weather":
       return "#7de2d1";
+    case "news":
+      return "#fbbf24";
     case "chat":
       return "#a78bfa";
     case "image":

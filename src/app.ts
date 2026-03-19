@@ -4,6 +4,7 @@ import helmet from "helmet";
 import { publicRouter } from "./routes/public.js";
 import { createChatRouter } from "./routes/chat.js";
 import { createImageRouter } from "./routes/image.js";
+import { createNewsRouter } from "./routes/news.js";
 import { createWeatherRouter } from "./routes/weather.js";
 import { createX402Middleware } from "./middleware/x402.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
@@ -43,6 +44,20 @@ export async function createApp() {
     createWeatherRouter({
       network: "testnet",
       priceUsd: config.prices.weather,
+    }),
+  );
+  app.use(
+    "/news",
+    createNewsRouter({
+      network: "mainnet",
+      priceUsd: config.prices.news,
+    }),
+  );
+  app.use(
+    "/testnet/news",
+    createNewsRouter({
+      network: "testnet",
+      priceUsd: config.prices.news,
     }),
   );
 

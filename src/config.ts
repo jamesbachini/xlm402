@@ -2,7 +2,7 @@ import "dotenv/config";
 
 export type NetworkLabel = "testnet" | "mainnet";
 export type StellarNetwork = "stellar:testnet" | "stellar:pubnet";
-export type ServiceId = "weather" | "chat" | "image";
+export type ServiceId = "weather" | "news" | "chat" | "image";
 
 export type PaymentNetworkConfig = {
   label: NetworkLabel;
@@ -137,6 +137,7 @@ export const config: Config = {
   ),
   prices: {
     weather: parsePrice("WEATHER_PRICE_USDC", "0.01"),
+    news: parsePrice("NEWS_PRICE_USDC", "0.01"),
     chat: parsePrice("CHAT_PRICE_USDC", "0.05"),
     image: parsePrice("IMAGE_PRICE_USDC", "0.10"),
   },
