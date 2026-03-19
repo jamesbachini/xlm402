@@ -61,6 +61,7 @@ const sharedStyles = `
   --radius-xl: 32px;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-display: 'Space Grotesk', var(--font-sans);
+  --font-brand: 'Quantico', var(--font-display);
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -420,10 +421,11 @@ a { color: inherit; text-decoration: none; }
 }
 
 .logo-text {
-  font-family: var(--font-display);
+  font-family: var(--font-brand);
   font-weight: 700;
   font-size: 1.1rem;
   letter-spacing: -0.02em;
+  text-transform: none;
 }
 
 .logo-text .logo-gradient {
@@ -498,7 +500,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .hero h1 {
-  font-family: var(--font-display);
+  font-family: var(--font-brand);
   font-size: clamp(2.5rem, 6vw, 4.5rem);
   font-weight: 700;
   letter-spacing: -0.04em;
@@ -1374,7 +1376,7 @@ function layout({
     <meta name="description" content="${escapeHtml(description)}" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Quantico:wght@700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
     <script type="module" src="/vendor/freighter-x402.js"></script>
     <style>${sharedStyles}</style>
   </head>
