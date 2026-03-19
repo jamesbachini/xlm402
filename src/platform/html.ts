@@ -512,7 +512,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .hero-subtitle {
-  font-size: 1rem;
+  font-size: 0.8rem;
   color: var(--text-secondary);
   max-width: 600px;
   margin: 0 auto 40px;
@@ -1631,7 +1631,7 @@ export function renderIndexPage(catalog: PlatformCatalog) {
           </div>
           <h1 class="reveal reveal-delay-1">x402 on Stellar</h1>
           <p class="hero-subtitle reveal reveal-delay-2">
-            THE DISCOVERY NETWORK FOR THE STELLAR MACHINE ECONOMY
+            SERVICES FOR THE MACHINE ECONOMY
           </p>
           <div class="hero-actions reveal reveal-delay-3">
             <a class="btn btn-primary" href="#catalogue">Browse catalogue</a>
