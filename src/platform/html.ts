@@ -1329,8 +1329,6 @@ function renderNav(activePage: string) {
       <div class="nav-links">
         <a href="/"${activePage === "home" ? ' class="active"' : ""}>Catalogue</a>
         <a href="/docs"${activePage === "docs" ? ' class="active"' : ""}>Docs</a>
-        <a href="/api/catalog">API</a>
-        <a href="/.well-known/x402">x402</a>
         <a href="https://github.com/jamesbachini/xlm402" target="_blank" rel="noopener noreferrer">GitHub</a>
       </div>
     </nav>
