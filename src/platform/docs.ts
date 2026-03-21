@@ -431,6 +431,7 @@ export function renderDocsPage(catalog: PlatformCatalog) {
   const endpoints = catalog.publishedEndpoints;
   const weatherEndpoints = endpoints.filter((ep) => ep.serviceId === "weather");
   const newsEndpoints = endpoints.filter((ep) => ep.serviceId === "news");
+  const cryptoEndpoints = endpoints.filter((ep) => ep.serviceId === "crypto");
   const chatEndpoints = endpoints.filter((ep) => ep.serviceId === "chat");
   const imageEndpoints = endpoints.filter((ep) => ep.serviceId === "image");
   const scrapeEndpoints = endpoints.filter((ep) => ep.serviceId === "scrape");
@@ -488,6 +489,8 @@ X402_FACILITATOR_API_KEY=<your-openzeppelin-api-key>`;
     sidebarLinks.push({ href: "#weather", label: "Weather API" });
   if (newsEndpoints.length > 0)
     sidebarLinks.push({ href: "#news", label: "News API" });
+  if (cryptoEndpoints.length > 0)
+    sidebarLinks.push({ href: "#crypto", label: "Crypto API" });
   if (chatEndpoints.length > 0)
     sidebarLinks.push({ href: "#chat", label: "Chat API" });
   if (imageEndpoints.length > 0)
@@ -524,13 +527,17 @@ X402_FACILITATOR_API_KEY=<your-openzeppelin-api-key>`;
               <p class="docs-p">
                 xlm402 provides paid API services over the
                 <a href="https://www.x402.org/" target="_blank" rel="noopener noreferrer">x402 payment protocol</a>
-                on the Stellar network. Weather, news, scrape, and collect routes on both networks expose USDC and XLM,
+                on the Stellar network. Weather, crypto, news, scrape, and collect routes on both networks expose USDC and XLM,
                 with no API keys or subscriptions required.
               </p>
               <div class="docs-steps">
                 <div class="docs-step">
                   <h4>Weather</h4>
                   <p>Current conditions, forecasts, archives, and historical summaries. Available on mainnet and testnet.</p>
+                </div>
+                <div class="docs-step">
+                  <h4>Crypto</h4>
+                  <p>Production-grade quotes and candles from official Binance, Kraken, and Coinbase Exchange APIs.</p>
                 </div>
                 <div class="docs-step">
                   <h4>News</h4>
@@ -745,6 +752,27 @@ curl ${config.publicBaseUrl}/weather/current?latitude=51.5&longitude=-0.1`)}
                 { name: "max_per_feed", detail: "Optional. Integer 1-10, defaults to 6." },
               ])}
               ${renderEndpointSection("News Endpoints", "Category-based story aggregation with standardized story objects.", newsEndpoints)}
+            </section>
+            ` : ""}
+
+            <!-- Crypto Reference -->
+            ${cryptoEndpoints.length > 0 ? `
+            <section class="docs-section" id="crypto">
+              <div class="docs-section-label">API Reference</div>
+              <h2>Crypto API</h2>
+              <p class="docs-p">
+                Crypto market data is available on both mainnet and testnet with a normalized
+                request contract. Use <code>source=best</code> to follow the configured fallback order
+                across Binance, Kraken, and Coinbase Exchange.
+              </p>
+              ${renderParamTable([
+                { name: "symbol", detail: "Required. BASE-USD format, for example BTC-USD." },
+                { name: "source", detail: "Optional. best, binance, kraken, or coinbase. Defaults to best." },
+                { name: "interval", detail: "Candles only. One of: 1m, 5m, 15m, 1h, 4h, 1d, 1w, 1M." },
+                { name: "limit", detail: "Candles only. Integer 1-500. Coinbase is capped at 300." },
+                { name: "start / end", detail: "Candles only. Optional ISO-8601 timestamps with start < end." },
+              ])}
+              ${renderEndpointSection("Crypto Endpoints", "Request-time quotes and candles with normalized JSON output and source fallback.", cryptoEndpoints)}
             </section>
             ` : ""}
 

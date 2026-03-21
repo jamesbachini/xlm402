@@ -2,6 +2,12 @@ import { HttpError } from "./errors.js";
 import type { ChatRequest, ImageRequest } from "../services/openai.js";
 import { isNewsCategory, type NewsCategory } from "../services/newsFeeds.js";
 import type {
+  CryptoCandlesRequest,
+  CryptoInterval,
+  CryptoQuoteRequest,
+  CryptoSourcePreference,
+} from "../services/crypto/types.js";
+import type {
   CollectRequest,
   ExtractFormat,
   ExtractPageRequest,
@@ -120,6 +126,22 @@ const COLLECTION_DEDUPE_MODES = new Set<CollectRequest["dedupe"]>([
   "canonical_url",
   "final_url",
 ]);
+const CRYPTO_SOURCE_OPTIONS = new Set<CryptoSourcePreference>([
+  "best",
+  "binance",
+  "kraken",
+  "coinbase",
+]);
+const CRYPTO_INTERVAL_OPTIONS = new Set<CryptoInterval>([
+  "1m",
+  "5m",
+  "15m",
+  "1h",
+  "4h",
+  "1d",
+  "1w",
+  "1M",
+]);
 
 type Coordinates = {
   latitude: number;
@@ -213,6 +235,112 @@ export function parseDateRange(query: Record<string, unknown>): { startDate: str
   }
 
   return { startDate, endDate };
+}
+
+function parseIsoTimestamp(name: string, value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw new HttpError(400, "invalid_request", `${name} must be an ISO-8601 timestamp`);
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new HttpError(400, "invalid_request", `${name} must not be empty`);
+  }
+
+  const timestamp = Date.parse(trimmed);
+  if (Number.isNaN(timestamp)) {
+    throw new HttpError(400, "invalid_request", `${name} must be a valid ISO-8601 timestamp`);
+  }
+
+  return new Date(timestamp).toISOString();
+}
+
+function parseCryptoSymbol(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new HttpError(400, "invalid_request", "symbol is required");
+  }
+
+  const normalized = value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{2,20}-[A-Z0-9]{2,10}$/.test(normalized)) {
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "symbol must use BASE-QUOTE format, for example BTC-USD",
+    );
+  }
+
+  if (!normalized.endsWith("-USD")) {
+    throw new HttpError(400, "invalid_request", "symbol must use BASE-USD format in v1");
+  }
+
+  return normalized;
+}
+
+function parseCryptoSource(value: unknown): CryptoSourcePreference {
+  if (value === undefined) {
+    return "best";
+  }
+
+  if (typeof value !== "string") {
+    throw new HttpError(400, "invalid_request", "source must be a string");
+  }
+
+  const normalized = value.trim().toLowerCase() as CryptoSourcePreference;
+  if (!CRYPTO_SOURCE_OPTIONS.has(normalized)) {
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "source must be one of: best, binance, kraken, coinbase",
+    );
+  }
+
+  return normalized;
+}
+
+function parseCryptoInterval(value: unknown): CryptoInterval {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new HttpError(400, "invalid_request", "interval is required");
+  }
+
+  const normalized = value.trim() as CryptoInterval;
+  if (!CRYPTO_INTERVAL_OPTIONS.has(normalized)) {
+    throw new HttpError(
+      400,
+      "invalid_request",
+      "interval must be one of: 1m, 5m, 15m, 1h, 4h, 1d, 1w, 1M",
+    );
+  }
+
+  return normalized;
+}
+
+export function parseCryptoQuoteRequest(query: Record<string, unknown>): CryptoQuoteRequest {
+  return {
+    symbol: parseCryptoSymbol(query.symbol),
+    source: parseCryptoSource(query.source),
+  };
+}
+
+export function parseCryptoCandlesRequest(query: Record<string, unknown>): CryptoCandlesRequest {
+  const start = parseIsoTimestamp("start", query.start);
+  const end = parseIsoTimestamp("end", query.end);
+
+  if (start && end && Date.parse(start) >= Date.parse(end)) {
+    throw new HttpError(400, "invalid_request", "start must be before end");
+  }
+
+  return {
+    symbol: parseCryptoSymbol(query.symbol),
+    interval: parseCryptoInterval(query.interval),
+    source: parseCryptoSource(query.source),
+    limit: parsePositiveInteger(query.limit, "limit", 1, 500, 100),
+    start,
+    end,
+  };
 }
 
 function parseFieldList(

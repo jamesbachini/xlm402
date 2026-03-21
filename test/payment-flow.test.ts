@@ -26,6 +26,10 @@ type AppContext = {
   };
   renderDocsPage: (catalog: unknown) => string;
   buildPlatformCatalog: () => unknown;
+  cryptoUpstream: {
+    requestCounts: Map<string, number>;
+    overrideFailures: Map<string, { status: number; body: JsonValue; remaining: number }>;
+  };
 };
 
 let context: AppContext;
@@ -155,6 +159,38 @@ function createTestPaymentClient(
       },
     }),
   );
+}
+
+async function payForJsonRequest(
+  url: string,
+  init?: RequestInit,
+) {
+  const client = createTestPaymentClient();
+  const unpaidResponse = await fetch(url, init);
+  assert.equal(unpaidResponse.status, 402);
+
+  const unpaidBody = (await unpaidResponse.json()) as Record<string, unknown>;
+  const paymentRequired = client.getPaymentRequiredResponse(
+    (name) => unpaidResponse.headers.get(name) ?? undefined,
+    unpaidBody,
+  );
+  const paymentPayload = await client.createPaymentPayload(paymentRequired);
+  const paymentHeaders = client.encodePaymentSignatureHeader(paymentPayload);
+  const headers = new Headers(init?.headers ?? {});
+
+  for (const [name, value] of Object.entries(paymentHeaders)) {
+    headers.set(name, value);
+  }
+
+  const paidResponse = await fetch(url, {
+    ...init,
+    headers,
+  });
+
+  return {
+    unpaidBody,
+    paidResponse,
+  };
 }
 
 before(async () => {
@@ -385,6 +421,127 @@ before(async () => {
       },
     ],
   ]);
+  const cryptoUpstream = {
+    requestCounts: new Map<string, number>(),
+    overrideFailures: new Map<
+      string,
+      { status: number; body: JsonValue; remaining: number }
+    >(),
+  };
+  const cryptoFixtures = new Map<string, { status?: number; body: JsonValue }>();
+
+  const binanceQuoteUrl = new URL("/api/v3/ticker/24hr", "https://api.binance.com");
+  binanceQuoteUrl.searchParams.set("symbol", "BTCUSDC");
+  cryptoFixtures.set(binanceQuoteUrl.toString(), {
+    body: {
+      symbol: "BTCUSDC",
+      lastPrice: "70654.39000000",
+      bidPrice: "70654.39000000",
+      askPrice: "70654.40000000",
+      openPrice: "70629.99000000",
+      highPrice: "70912.11000000",
+      lowPrice: "69381.40000000",
+      volume: "4330.57742000",
+      closeTime: 1774084821385,
+    },
+  });
+
+  const binanceCandlesUrl = new URL("/api/v3/klines", "https://api.binance.com");
+  binanceCandlesUrl.searchParams.set("symbol", "BTCUSDC");
+  binanceCandlesUrl.searchParams.set("interval", "1h");
+  binanceCandlesUrl.searchParams.set("limit", "2");
+  cryptoFixtures.set(binanceCandlesUrl.toString(), {
+    body: [
+      [
+        1774080000000,
+        "70727.33000000",
+        "70753.79000000",
+        "70492.02000000",
+        "70594.43000000",
+        "956.10118000",
+        1774083599999,
+      ],
+      [
+        1774083600000,
+        "70594.42000000",
+        "70735.36000000",
+        "70570.40000000",
+        "70669.81000000",
+        "102.13090000",
+        1774087199999,
+      ],
+    ],
+  });
+
+  const krakenQuoteUrl = new URL("/0/public/Ticker", "https://api.kraken.com");
+  krakenQuoteUrl.searchParams.set("pair", "XBTUSD");
+  cryptoFixtures.set(krakenQuoteUrl.toString(), {
+    body: {
+      error: [],
+      result: {
+        XXBTZUSD: {
+          a: ["70667.70000", "7", "7.000"],
+          b: ["70667.60000", "1", "1.000"],
+          c: ["70667.70000", "0.00463593"],
+          v: ["148.79130860", "1410.37738116"],
+          l: ["70440.20000", "69400.00000"],
+          h: ["70850.20000", "70901.10000"],
+          o: "70515.60000",
+        },
+      },
+    },
+  });
+
+  const krakenCandlesUrl = new URL("/0/public/OHLC", "https://api.kraken.com");
+  krakenCandlesUrl.searchParams.set("pair", "XBTUSD");
+  krakenCandlesUrl.searchParams.set("interval", "60");
+  cryptoFixtures.set(krakenCandlesUrl.toString(), {
+    body: {
+      error: [],
+      result: {
+        XXBTZUSD: [
+          [1773997200, "70510.0", "70600.0", "70440.2", "70515.6", "70520.0", "12.34508686", 1113],
+          [1774000800, "70515.6", "70732.1", "70484.2", "70580.2", "70571.5", "17.19132680", 740],
+        ],
+        last: 1774000800,
+      },
+    },
+  });
+
+  const coinbaseTickerUrl = new URL("/products/BTC-USD/ticker", "https://api.exchange.coinbase.com");
+  cryptoFixtures.set(coinbaseTickerUrl.toString(), {
+    body: {
+      ask: "70654.51",
+      bid: "70654.5",
+      volume: "6146.54175076",
+      trade_id: 984872265,
+      price: "70654.51",
+      size: "0.0000028",
+      time: "2026-03-21T09:18:51.724806867Z",
+    },
+  });
+
+  const coinbaseStatsUrl = new URL("/products/BTC-USD/stats", "https://api.exchange.coinbase.com");
+  cryptoFixtures.set(coinbaseStatsUrl.toString(), {
+    body: {
+      open: "70578.23",
+      high: "70913.08",
+      low: "69360",
+      last: "70654.51",
+      volume: "6146.54175076",
+    },
+  });
+
+  const coinbaseCandlesUrl = new URL("/products/BTC-USD/candles", "https://api.exchange.coinbase.com");
+  coinbaseCandlesUrl.searchParams.set("granularity", "3600");
+  coinbaseCandlesUrl.searchParams.set("start", "2026-03-20T06:00:00.000Z");
+  coinbaseCandlesUrl.searchParams.set("end", "2026-03-20T08:00:00.000Z");
+  cryptoFixtures.set(coinbaseCandlesUrl.toString(), {
+    body: [
+      [1773990000, "70206.01", "70923.96", "70495.34", "70850.25", "149.59582148"],
+      [1773986400, "70345.99", "70645", "70594.26", "70495.35", "106.05755403"],
+    ],
+  });
 
   globalThis.fetch = async (input, init) => {
     const url =
@@ -397,6 +554,29 @@ before(async () => {
     if (url === "https://api.binance.com/api/v3/ticker/price?symbol=XLMUSDT") {
       return new Response(JSON.stringify({ price: "0.25" }), {
         status: 200,
+        headers: {
+          "content-type": "application/json",
+        },
+      });
+    }
+
+    const cryptoFixture = cryptoFixtures.get(url);
+    if (cryptoFixture) {
+      cryptoUpstream.requestCounts.set(url, (cryptoUpstream.requestCounts.get(url) ?? 0) + 1);
+
+      const override = cryptoUpstream.overrideFailures.get(url);
+      if (override && override.remaining > 0) {
+        override.remaining -= 1;
+        return new Response(JSON.stringify(override.body), {
+          status: override.status,
+          headers: {
+            "content-type": "application/json",
+          },
+        });
+      }
+
+      return new Response(JSON.stringify(cryptoFixture.body), {
+        status: cryptoFixture.status ?? 200,
         headers: {
           "content-type": "application/json",
         },
@@ -571,6 +751,7 @@ before(async () => {
     appBaseUrl: `http://127.0.0.1:${appAddress.port}`,
     facilitatorRequests,
     facilitatorBehavior,
+    cryptoUpstream,
     renderDocsPage: docsModule.renderDocsPage,
     buildPlatformCatalog: catalogModule.buildPlatformCatalog,
     close: async () => {
@@ -590,6 +771,8 @@ after(async () => {
 
 test.afterEach(() => {
   context.facilitatorBehavior.settleMode = "success";
+  context.cryptoUpstream.requestCounts.clear();
+  context.cryptoUpstream.overrideFailures.clear();
 });
 
 test("catalogue HTML uses the v2 payment flow and bundled Freighter client", () => {
@@ -647,8 +830,10 @@ test("public discovery endpoints advertise XLM when enabled for any configured n
   assert.deepEqual(testnetEndpoint.payment_assets, ["USDC", "XLM"]);
   assert.ok(catalogBody.services.some((service) => service.id === "scrape"));
   assert.ok(catalogBody.services.some((service) => service.id === "collect"));
+  assert.ok(catalogBody.services.some((service) => service.id === "crypto"));
   assert.ok(catalogBody.endpoints.some((endpoint) => endpoint.service === "scrape"));
   assert.ok(catalogBody.endpoints.some((endpoint) => endpoint.service === "collect"));
+  assert.ok(catalogBody.endpoints.some((endpoint) => endpoint.service === "crypto"));
 });
 
 test("weather routes expose USDC and XLM on both mainnet and testnet when configured", async () => {
@@ -760,6 +945,54 @@ test("news routes expose USDC and XLM on both mainnet and testnet when configure
       assert.equal(xlmRequirement.network, testCase.network);
       assert.equal(xlmRequirement.payTo, testCase.payTo);
     }
+  }
+});
+
+test("crypto routes expose USDC and XLM on both mainnet and testnet when configured", async () => {
+  const client = new x402HTTPClient(new x402Client());
+  const cases = [
+    {
+      route: "/markets/crypto/quote",
+      url: `${context.appBaseUrl}/markets/crypto/quote?symbol=BTC-USD&source=best`,
+      network: "stellar:pubnet",
+      payTo: process.env.MAINNET_PAY_TO_ADDRESS!,
+      xlmContract: mainnetXlmContract,
+    },
+    {
+      route: "/testnet/markets/crypto/quote",
+      url: `${context.appBaseUrl}/testnet/markets/crypto/quote?symbol=BTC-USD&source=best`,
+      network: "stellar:testnet",
+      payTo: process.env.TESTNET_PAY_TO_ADDRESS!,
+      xlmContract: testnetXlmContract,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const unpaidResponse = await fetch(testCase.url);
+    assert.equal(unpaidResponse.status, 402);
+
+    const unpaidBody = (await unpaidResponse.json()) as Record<string, unknown>;
+    const paymentRequired = client.getPaymentRequiredResponse(
+      (name) => unpaidResponse.headers.get(name) ?? undefined,
+      unpaidBody,
+    );
+
+    assert.equal(unpaidBody.route, testCase.route);
+    assert.equal(paymentRequired.accepts.length, 2);
+
+    const usdcRequirement = paymentRequired.accepts.find(
+      (requirement) => requirement.asset === getUsdcAddress(testCase.network),
+    );
+    const xlmRequirement = paymentRequired.accepts.find(
+      (requirement) => requirement.asset === testCase.xlmContract,
+    );
+
+    assert.ok(usdcRequirement);
+    assert.ok(xlmRequirement);
+    assert.equal(usdcRequirement.network, testCase.network);
+    assert.equal(usdcRequirement.payTo, testCase.payTo);
+    assert.equal(xlmRequirement.network, testCase.network);
+    assert.equal(xlmRequirement.payTo, testCase.payTo);
   }
 });
 
@@ -971,6 +1204,225 @@ test("XLM-selected retries settle against the configured XLM asset on testnet", 
     assert.equal(requirements.asset, expectedContract);
     assert.equal(requirements.network, expectedNetwork);
   });
+});
+
+test("paid crypto quote route accepts a v2 retry and returns normalized data", async () => {
+  context.facilitatorRequests.verify.length = 0;
+  context.facilitatorRequests.settle.length = 0;
+
+  const url = `${context.appBaseUrl}/markets/crypto/quote?symbol=BTC-USD&source=best`;
+  const { paidResponse } = await payForJsonRequest(url);
+
+  assert.equal(paidResponse.status, 200);
+  assert.equal(paidResponse.headers.get("cache-control"), "no-store");
+
+  const paidBody = (await paidResponse.json()) as Record<string, unknown>;
+  const data = paidBody.data as Record<string, unknown>;
+
+  assert.equal(paidBody.paid, true);
+  assert.equal(paidBody.network, "mainnet");
+  assert.equal(data.asset_class, "crypto");
+  assert.equal(data.source, "binance");
+  assert.equal(data.symbol, "BTC-USD");
+  assert.equal(data.currency, "USD");
+  assert.equal(data.market_status, "open");
+  assert.equal(data.experimental, false);
+  assert.equal(data.price, "70654.39000000");
+
+  assert.equal(context.facilitatorRequests.verify.length, 1);
+  assert.equal(context.facilitatorRequests.settle.length, 1);
+});
+
+test("crypto quote normalization covers Binance, Kraken, and Coinbase fixtures", async () => {
+  const cases = [
+    {
+      source: "binance",
+      expected: {
+        price: "70654.39000000",
+        bid: "70654.39000000",
+        ask: "70654.40000000",
+        open_24h: "70629.99000000",
+        high_24h: "70912.11000000",
+        low_24h: "69381.40000000",
+        volume_24h: "4330.57742000",
+      },
+    },
+    {
+      source: "kraken",
+      expected: {
+        price: "70667.70000",
+        bid: "70667.60000",
+        ask: "70667.70000",
+        open_24h: "70515.60000",
+        high_24h: "70901.10000",
+        low_24h: "69400.00000",
+        volume_24h: "1410.37738116",
+      },
+    },
+    {
+      source: "coinbase",
+      expected: {
+        price: "70654.51",
+        bid: "70654.5",
+        ask: "70654.51",
+        open_24h: "70578.23",
+        high_24h: "70913.08",
+        low_24h: "69360",
+        volume_24h: "6146.54175076",
+      },
+    },
+  ] as const;
+
+  for (const testCase of cases) {
+    const url = `${context.appBaseUrl}/markets/crypto/quote?symbol=BTC-USD&source=${testCase.source}`;
+    const { paidResponse } = await payForJsonRequest(url);
+    assert.equal(paidResponse.status, 200);
+
+    const paidBody = (await paidResponse.json()) as Record<string, unknown>;
+    const data = paidBody.data as Record<string, unknown>;
+
+    assert.equal(data.asset_class, "crypto");
+    assert.equal(data.source, testCase.source);
+    assert.equal(data.symbol, "BTC-USD");
+    assert.equal(data.currency, "USD");
+    assert.equal(data.experimental, false);
+    assert.equal(data.market_status, "open");
+    assert.match(String(data.as_of), /^2026-|^\d{4}-\d{2}-\d{2}T/);
+
+    Object.entries(testCase.expected).forEach(([key, value]) => {
+      assert.equal(data[key], value);
+    });
+  }
+});
+
+test("crypto candles normalization covers Binance, Kraken, and Coinbase fixtures", async () => {
+  const cases = [
+    {
+      source: "binance",
+      url: `${context.appBaseUrl}/markets/crypto/candles?symbol=BTC-USD&interval=1h&limit=2&source=binance`,
+      expectedOpen: "70727.33000000",
+      expectedClose: "70669.81000000",
+    },
+    {
+      source: "kraken",
+      url: `${context.appBaseUrl}/markets/crypto/candles?symbol=BTC-USD&interval=1h&limit=2&source=kraken`,
+      expectedOpen: "70510.0",
+      expectedClose: "70580.2",
+    },
+    {
+      source: "coinbase",
+      url:
+        `${context.appBaseUrl}/markets/crypto/candles?symbol=BTC-USD&interval=1h&limit=2&source=coinbase` +
+        "&start=2026-03-20T06:00:00.000Z&end=2026-03-20T08:00:00.000Z",
+      expectedOpen: "70594.26",
+      expectedClose: "70850.25",
+    },
+  ] as const;
+
+  for (const testCase of cases) {
+    const { paidResponse } = await payForJsonRequest(testCase.url);
+    assert.equal(paidResponse.status, 200);
+
+    const paidBody = (await paidResponse.json()) as Record<string, unknown>;
+    const data = paidBody.data as Record<string, unknown>;
+    const candles = data.candles as Array<Record<string, unknown>>;
+
+    assert.equal(data.asset_class, "crypto");
+    assert.equal(data.source, testCase.source);
+    assert.equal(data.symbol, "BTC-USD");
+    assert.equal(data.interval, "1h");
+    assert.equal(data.currency, "USD");
+    assert.equal(data.experimental, false);
+    assert.equal(candles.length, 2);
+    assert.equal(candles[0].open, testCase.expectedOpen);
+    assert.equal(candles[1].close, testCase.expectedClose);
+    assert.match(String(candles[0].open_time), /^\d{4}-\d{2}-\d{2}T/);
+    assert.match(String(candles[1].close_time), /^\d{4}-\d{2}-\d{2}T/);
+  }
+});
+
+test("crypto source=best falls back to the next exchange when the first upstream fails", async () => {
+  const binanceQuoteUrl = new URL("/api/v3/ticker/24hr", "https://api.binance.com");
+  binanceQuoteUrl.searchParams.set("symbol", "BTCUSDC");
+  context.cryptoUpstream.overrideFailures.set(binanceQuoteUrl.toString(), {
+    status: 502,
+    body: { error: "temporary_binance_failure" },
+    remaining: 1,
+  });
+
+  const quoteResponse = await payForJsonRequest(
+    `${context.appBaseUrl}/markets/crypto/quote?symbol=BTC-USD&source=best`,
+  );
+  assert.equal(quoteResponse.paidResponse.status, 200);
+
+  const quoteBody = (await quoteResponse.paidResponse.json()) as Record<string, unknown>;
+  const quoteData = quoteBody.data as Record<string, unknown>;
+  assert.equal(quoteData.source, "kraken");
+  assert.equal(context.cryptoUpstream.requestCounts.get(binanceQuoteUrl.toString()), 1);
+
+  const binanceCandlesUrl = new URL("/api/v3/klines", "https://api.binance.com");
+  binanceCandlesUrl.searchParams.set("symbol", "BTCUSDC");
+  binanceCandlesUrl.searchParams.set("interval", "1h");
+  binanceCandlesUrl.searchParams.set("limit", "2");
+  context.cryptoUpstream.overrideFailures.set(binanceCandlesUrl.toString(), {
+    status: 502,
+    body: { error: "temporary_binance_failure" },
+    remaining: 1,
+  });
+
+  const candlesResponse = await payForJsonRequest(
+    `${context.appBaseUrl}/markets/crypto/candles?symbol=BTC-USD&interval=1h&limit=2&source=best`,
+  );
+  assert.equal(candlesResponse.paidResponse.status, 200);
+
+  const candlesBody = (await candlesResponse.paidResponse.json()) as Record<string, unknown>;
+  const candlesData = candlesBody.data as Record<string, unknown>;
+  assert.equal(candlesData.source, "kraken");
+});
+
+test("crypto validation rejects invalid symbol, interval, and date ranges after payment", async () => {
+  const cases = [
+    {
+      url: `${context.appBaseUrl}/markets/crypto/quote?symbol=BTCUSD&source=best`,
+      message: "symbol must use BASE-QUOTE format",
+    },
+    {
+      url: `${context.appBaseUrl}/markets/crypto/quote?symbol=BTC-EUR&source=best`,
+      message: "symbol must use BASE-USD format",
+    },
+    {
+      url: `${context.appBaseUrl}/markets/crypto/candles?symbol=BTC-USD&interval=2h&source=best`,
+      message: "interval must be one of",
+    },
+    {
+      url:
+        `${context.appBaseUrl}/markets/crypto/candles?symbol=BTC-USD&interval=1h&source=best` +
+        "&start=2026-03-20T08:00:00.000Z&end=2026-03-20T06:00:00.000Z",
+      message: "start must be before end",
+    },
+  ];
+
+  for (const testCase of cases) {
+    const { paidResponse } = await payForJsonRequest(testCase.url);
+    assert.equal(paidResponse.status, 400);
+
+    const body = (await paidResponse.json()) as Record<string, unknown>;
+    assert.equal(body.error, "invalid_request");
+    assert.match(String(body.message), new RegExp(testCase.message));
+  }
+});
+
+test("crypto routes do not cache upstream responses", async () => {
+  const upstreamUrl = new URL("/api/v3/ticker/24hr", "https://api.binance.com");
+  upstreamUrl.searchParams.set("symbol", "BTCUSDC");
+  const paidUrl = `${context.appBaseUrl}/markets/crypto/quote?symbol=BTC-USD&source=binance`;
+
+  const first = await payForJsonRequest(paidUrl);
+  const second = await payForJsonRequest(paidUrl);
+
+  assert.equal(first.paidResponse.status, 200);
+  assert.equal(second.paidResponse.status, 200);
+  assert.equal(context.cryptoUpstream.requestCounts.get(upstreamUrl.toString()), 2);
 });
 
 test("settlement failures return the facilitator error instead of a blank body", async () => {

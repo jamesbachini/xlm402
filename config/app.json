@@ -17,10 +17,16 @@
   "prices": {
     "weather": "0.01",
     "news": "0.01",
+    "crypto": "0.01",
     "chat": "0.05",
     "image": "0.10",
     "scrape": "0.03",
     "collect": "0.08"
+  },
+  "crypto": {
+    "timeoutMs": 8000,
+    "sources": ["binance", "kraken", "coinbase"],
+    "fallbackOrder": ["binance", "kraken", "coinbase"]
   },
   "scrape": {
     "cacheTtlSeconds": 300,

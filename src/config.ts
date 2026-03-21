@@ -5,7 +5,15 @@ import path from "node:path";
 
 export type NetworkLabel = "testnet" | "mainnet";
 export type StellarNetwork = "stellar:testnet" | "stellar:pubnet";
-export type ServiceId = "weather" | "news" | "chat" | "image" | "scrape" | "collect";
+export type ServiceId =
+  | "weather"
+  | "news"
+  | "crypto"
+  | "chat"
+  | "image"
+  | "scrape"
+  | "collect";
+export type CryptoSource = "binance" | "kraken" | "coinbase";
 
 export type PaymentNetworkConfig = {
   label: NetworkLabel;
@@ -35,6 +43,12 @@ type ScrapeConfig = {
   userAgent: string;
 };
 
+type CryptoConfig = {
+  timeoutMs: number;
+  allowedSources: CryptoSource[];
+  fallbackOrder: CryptoSource[];
+};
+
 type NetworkFileConfig = {
   payToAddress: string;
   facilitatorUrl: string;
@@ -55,6 +69,11 @@ type PublicConfigFile = {
     openMeteoArchiveBaseUrl: string;
   };
   prices: ServicePricing;
+  crypto: {
+    timeoutMs: number;
+    sources: CryptoSource[];
+    fallbackOrder: CryptoSource[];
+  };
   scrape: ScrapeConfig;
   openai: {
     chatModel: string;
@@ -77,10 +96,13 @@ type Config = {
   logPayments: boolean;
   xlmEnabled: boolean;
   prices: ServicePricing;
+  crypto: CryptoConfig;
   scrape: ScrapeConfig;
   networks: Record<NetworkLabel, PaymentNetworkConfig>;
   openai: OpenAIConfig;
 };
+
+const CRYPTO_SOURCES: CryptoSource[] = ["binance", "kraken", "coinbase"];
 
 function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -220,6 +242,33 @@ function parseStringValue(name: string, raw: string): string {
   return value;
 }
 
+function parseCryptoSources(
+  name: string,
+  raw: string | CryptoSource[],
+  allowed = CRYPTO_SOURCES,
+): CryptoSource[] {
+  const values = Array.isArray(raw)
+    ? raw
+    : raw
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+  if (values.length === 0) {
+    throw new Error(`${name} must contain at least one source`);
+  }
+
+  const invalid = values.filter(
+    (value): value is string => !allowed.includes(value as CryptoSource),
+  );
+
+  if (invalid.length > 0) {
+    throw new Error(`${name} contains unsupported sources: ${invalid.join(", ")}`);
+  }
+
+  return values as CryptoSource[];
+}
+
 const fileConfig = readConfigFile();
 
 function readNetworkConfig(
@@ -309,6 +358,10 @@ export const config: Config = {
       "NEWS_PRICE_USDC",
       parsePriceValue("prices.news", fileConfig.prices.news),
     ),
+    crypto: parsePrice(
+      "CRYPTO_PRICE_USDC",
+      parsePriceValue("prices.crypto", fileConfig.prices.crypto),
+    ),
     chat: parsePrice(
       "CHAT_PRICE_USDC",
       parsePriceValue("prices.chat", fileConfig.prices.chat),
@@ -326,6 +379,26 @@ export const config: Config = {
       parsePriceValue("prices.collect", fileConfig.prices.collect),
     ),
   },
+  crypto: (() => {
+    const allowedSources = parseCryptoSources(
+      "crypto.sources",
+      process.env.CRYPTO_SOURCES?.trim() || fileConfig.crypto.sources,
+    );
+    const fallbackOrder = parseCryptoSources(
+      "crypto.fallbackOrder",
+      process.env.CRYPTO_FALLBACK_ORDER?.trim() || fileConfig.crypto.fallbackOrder,
+      allowedSources,
+    );
+
+    return {
+      timeoutMs: parseInteger(
+        "CRYPTO_TIMEOUT_MS",
+        parseIntegerValue("crypto.timeoutMs", fileConfig.crypto.timeoutMs),
+      ),
+      allowedSources,
+      fallbackOrder,
+    };
+  })(),
   scrape: {
     cacheTtlSeconds: parseIntegerValue(
       "scrape.cacheTtlSeconds",

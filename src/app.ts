@@ -7,6 +7,7 @@ import { publicRouter } from "./routes/public.js";
 import { createChatRouter } from "./routes/chat.js";
 import { createImageRouter } from "./routes/image.js";
 import { createNewsRouter } from "./routes/news.js";
+import { createCryptoRouter } from "./routes/crypto.js";
 import { createCollectRouter, createScrapeRouter } from "./routes/scrape.js";
 import { createWeatherRouter } from "./routes/weather.js";
 import { createX402Middleware } from "./middleware/x402.js";
@@ -64,6 +65,20 @@ export async function createApp() {
     createNewsRouter({
       network: "testnet",
       priceUsd: config.prices.news,
+    }),
+  );
+  app.use(
+    "/markets/crypto",
+    createCryptoRouter({
+      network: "mainnet",
+      priceUsd: config.prices.crypto,
+    }),
+  );
+  app.use(
+    "/testnet/markets/crypto",
+    createCryptoRouter({
+      network: "testnet",
+      priceUsd: config.prices.crypto,
     }),
   );
   app.use(
