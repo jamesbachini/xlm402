@@ -1,6 +1,11 @@
 import { HttpError } from "./errors.js";
 import type { ChatRequest, ImageRequest } from "../services/openai.js";
 import { isNewsCategory, type NewsCategory } from "../services/newsFeeds.js";
+import type {
+  CollectRequest,
+  ExtractFormat,
+  ExtractPageRequest,
+} from "../services/scrape.js";
 
 export const FORECAST_HOURLY_FIELDS = new Set([
   "temperature_2m",
@@ -109,6 +114,12 @@ const IMAGE_OUTPUT_FORMATS = new Set<ImageRequest["outputFormat"]>([
   "webp",
 ]);
 const IMAGE_MODERATION_LEVELS = new Set<ImageRequest["moderation"]>(["auto", "low"]);
+const EXTRACT_FORMATS = new Set<ExtractFormat>(["text", "markdown"]);
+const COLLECTION_SCOPES = new Set<CollectRequest["scope"]>(["same_origin"]);
+const COLLECTION_DEDUPE_MODES = new Set<CollectRequest["dedupe"]>([
+  "canonical_url",
+  "final_url",
+]);
 
 type Coordinates = {
   latitude: number;
@@ -421,6 +432,61 @@ function parseMetadata(value: unknown): Record<string, string> {
   );
 }
 
+function parseBooleanFlag(value: unknown, name: string, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value !== "boolean") {
+    throw new HttpError(400, "invalid_request", `${name} must be a boolean`);
+  }
+
+  return value;
+}
+
+function parseStringList(value: unknown, name: string, maxItems: number): string[] {
+  if (value === undefined) {
+    return [];
+  }
+
+  if (!Array.isArray(value)) {
+    throw new HttpError(400, "invalid_request", `${name} must be an array of strings`);
+  }
+
+  if (value.length > maxItems) {
+    throw new HttpError(400, "invalid_request", `${name} can contain at most ${maxItems} items`);
+  }
+
+  return value.map((entry, index) => {
+    if (typeof entry !== "string") {
+      throw new HttpError(
+        400,
+        "invalid_request",
+        `${name}[${index}] must be a string`,
+      );
+    }
+
+    const trimmed = entry.trim();
+    if (!trimmed) {
+      throw new HttpError(
+        400,
+        "invalid_request",
+        `${name}[${index}] must not be empty`,
+      );
+    }
+
+    if (trimmed.length > 256) {
+      throw new HttpError(
+        400,
+        "invalid_request",
+        `${name}[${index}] must be at most 256 characters`,
+      );
+    }
+
+    return trimmed;
+  });
+}
+
 export function parseChatRequest(body: unknown): ChatRequest {
   const input = ensureObject(body);
   const prompt = parseOptionalString(input.prompt, "prompt", 32000);
@@ -484,6 +550,56 @@ export function parseImageRequest(body: unknown): ImageRequest {
       "moderation",
       IMAGE_MODERATION_LEVELS,
       "auto",
+    ),
+  };
+}
+
+export function parseScrapeRequest(body: unknown): ExtractPageRequest {
+  const input = ensureObject(body);
+  const url = parseOptionalString(input.url, "url", 2048);
+
+  if (!url) {
+    throw new HttpError(400, "invalid_request", "url is required");
+  }
+
+  return {
+    url,
+    format: parseEnumValue(input.format, "format", EXTRACT_FORMATS, "markdown"),
+    includeLinks: parseBooleanFlag(input.include_links, "include_links", true),
+    includeMetadata: parseBooleanFlag(input.include_metadata, "include_metadata", true),
+    includeJsonLd: parseBooleanFlag(input.include_json_ld, "include_json_ld", true),
+    maxChars: parseBoundedInteger(input.max_chars, "max_chars", 1000, 100000, 50000),
+  };
+}
+
+export function parseCollectRequest(body: unknown): CollectRequest {
+  const input = ensureObject(body);
+  const seedUrl = parseOptionalString(input.seed_url, "seed_url", 2048);
+
+  if (!seedUrl) {
+    throw new HttpError(400, "invalid_request", "seed_url is required");
+  }
+
+  return {
+    seedUrl,
+    scope: parseEnumValue(input.scope, "scope", COLLECTION_SCOPES, "same_origin"),
+    maxPages: parseBoundedInteger(input.max_pages, "max_pages", 1, 10, 10),
+    maxDepth: parseBoundedInteger(input.max_depth, "max_depth", 0, 2, 2),
+    includePatterns: parseStringList(input.include_patterns, "include_patterns", 20),
+    excludePatterns: parseStringList(input.exclude_patterns, "exclude_patterns", 20),
+    format: parseEnumValue(input.format, "format", EXTRACT_FORMATS, "markdown"),
+    dedupe: parseEnumValue(
+      input.dedupe,
+      "dedupe",
+      COLLECTION_DEDUPE_MODES,
+      "canonical_url",
+    ),
+    maxCharsPerPage: parseBoundedInteger(
+      input.max_chars_per_page,
+      "max_chars_per_page",
+      1000,
+      50000,
+      30000,
     ),
   };
 }

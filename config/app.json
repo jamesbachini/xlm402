@@ -18,7 +18,15 @@
     "weather": "0.01",
     "news": "0.01",
     "chat": "0.05",
-    "image": "0.10"
+    "image": "0.10",
+    "scrape": "0.03",
+    "collect": "0.08"
+  },
+  "scrape": {
+    "cacheTtlSeconds": 300,
+    "maxBodyBytes": 5242880,
+    "maxRedirects": 5,
+    "userAgent": "xlm402-bot/1.0 (+https://xlm402.com)"
   },
   "openai": {
     "chatModel": "gpt-5.4",

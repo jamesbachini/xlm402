@@ -139,6 +139,24 @@ function sendJson(res: ServerResponse, statusCode: number, body: JsonValue) {
   res.end(JSON.stringify(body));
 }
 
+function createTestPaymentClient(
+  selectRequirement?: Parameters<typeof x402Client>[0],
+) {
+  return new x402HTTPClient(
+    new x402Client(selectRequirement).register("stellar:*", {
+      scheme: "exact",
+      async createPaymentPayload(x402Version: number) {
+        return {
+          x402Version,
+          payload: {
+            provider: "integration-test",
+          },
+        };
+      },
+    }),
+  );
+}
+
 before(async () => {
   const mainnetPayTo = Keypair.random().publicKey();
   const testnetPayTo = Keypair.random().publicKey();
@@ -232,6 +250,141 @@ before(async () => {
       ]),
     ],
   ]);
+  const htmlByUrl = new Map<
+    string,
+    {
+      body: string;
+      contentType: string;
+      status?: number;
+      location?: string;
+    }
+  >([
+    [
+      "https://scrape.example/robots.txt",
+      {
+        body: "User-agent: *\nDisallow: /blocked\n",
+        contentType: "text/plain",
+      },
+    ],
+    [
+      "https://scrape.example/article",
+      {
+        body: `<!doctype html>
+<html lang="en">
+  <head>
+    <title>Example Article</title>
+    <meta name="description" content="Structured extraction example">
+    <link rel="canonical" href="https://scrape.example/article">
+    <script type="application/ld+json">{"@type":"Article","headline":"Example Article"}</script>
+  </head>
+  <body>
+    <main>
+      <h1>Example Article</h1>
+      <p>This page contains useful text for structured extraction.</p>
+      <a href="/related" rel="next">Related page</a>
+      <a href="/blocked">Blocked page</a>
+    </main>
+  </body>
+</html>`,
+        contentType: "text/html; charset=utf-8",
+      },
+    ],
+    [
+      "https://scrape.example/related",
+      {
+        body: `<!doctype html>
+<html lang="en">
+  <head><title>Related Page</title></head>
+  <body><p>Related content lives here.</p></body>
+</html>`,
+        contentType: "text/html; charset=utf-8",
+      },
+    ],
+    [
+      "https://scrape.example/blocked",
+      {
+        body: `<!doctype html><html><body><p>Blocked page.</p></body></html>`,
+        contentType: "text/html; charset=utf-8",
+      },
+    ],
+    [
+      "https://collect.example/robots.txt",
+      {
+        body: "User-agent: *\nDisallow: /private\n",
+        contentType: "text/plain",
+      },
+    ],
+    [
+      "https://collect.example/blog",
+      {
+        body: `<!doctype html>
+<html lang="en">
+  <head><title>Blog Index</title><link rel="canonical" href="https://collect.example/blog"></head>
+  <body>
+    <h1>Blog</h1>
+    <a href="/blog/post-1">Post 1</a>
+    <a href="/blog/post-2">Post 2</a>
+    <a href="/tag/ignore">Ignore Tag</a>
+    <a href="/private/secret">Private</a>
+  </body>
+</html>`,
+        contentType: "text/html; charset=utf-8",
+      },
+    ],
+    [
+      "https://collect.example/blog/post-1",
+      {
+        body: `<!doctype html>
+<html lang="en">
+  <head>
+    <title>Post One</title>
+    <link rel="canonical" href="https://collect.example/blog/post-1">
+  </head>
+  <body>
+    <article>
+      <h1>Post One</h1>
+      <p>Collected content for the first post.</p>
+      <a href="/blog/post-2">Post 2</a>
+    </article>
+  </body>
+</html>`,
+        contentType: "text/html; charset=utf-8",
+      },
+    ],
+    [
+      "https://collect.example/blog/post-2",
+      {
+        body: `<!doctype html>
+<html lang="en">
+  <head>
+    <title>Post Two</title>
+    <link rel="canonical" href="https://collect.example/blog/post-2">
+  </head>
+  <body>
+    <article>
+      <h1>Post Two</h1>
+      <p>Collected content for the second post.</p>
+    </article>
+  </body>
+</html>`,
+        contentType: "text/html; charset=utf-8",
+      },
+    ],
+    [
+      "https://collect.example/tag/ignore",
+      {
+        body: `<!doctype html><html><body><p>Ignored page.</p></body></html>`,
+        contentType: "text/html; charset=utf-8",
+      },
+    ],
+    [
+      "https://collect.example/private/secret",
+      {
+        body: `<!doctype html><html><body><p>Private page.</p></body></html>`,
+        contentType: "text/html; charset=utf-8",
+      },
+    ],
+  ]);
 
   globalThis.fetch = async (input, init) => {
     const url =
@@ -256,6 +409,17 @@ before(async () => {
         status: 200,
         headers: {
           "content-type": "application/rss+xml",
+        },
+      });
+    }
+
+    const html = htmlByUrl.get(url);
+    if (html) {
+      return new Response(html.body, {
+        status: html.status ?? 200,
+        headers: {
+          "content-type": html.contentType,
+          ...(html.location ? { location: html.location } : {}),
         },
       });
     }
@@ -463,7 +627,8 @@ test("public discovery endpoints advertise XLM when enabled for any configured n
   };
   const catalogBody = (await catalogResponse.json()) as {
     payment_assets: string[];
-    endpoints: Array<{ network: string; payment_assets: string[] }>;
+    services: Array<{ id: string }>;
+    endpoints: Array<{ network: string; payment_assets: string[]; service: string }>;
   };
 
   assert.deepEqual(healthBody.payment_assets, ["USDC", "XLM"]);
@@ -480,6 +645,10 @@ test("public discovery endpoints advertise XLM when enabled for any configured n
   assert.ok(testnetEndpoint);
   assert.deepEqual(mainnetEndpoint.payment_assets, ["USDC", "XLM"]);
   assert.deepEqual(testnetEndpoint.payment_assets, ["USDC", "XLM"]);
+  assert.ok(catalogBody.services.some((service) => service.id === "scrape"));
+  assert.ok(catalogBody.services.some((service) => service.id === "collect"));
+  assert.ok(catalogBody.endpoints.some((endpoint) => endpoint.service === "scrape"));
+  assert.ok(catalogBody.endpoints.some((endpoint) => endpoint.service === "collect"));
 });
 
 test("weather routes expose USDC and XLM on both mainnet and testnet when configured", async () => {
@@ -591,6 +760,78 @@ test("news routes expose USDC and XLM on both mainnet and testnet when configure
       assert.equal(xlmRequirement.network, testCase.network);
       assert.equal(xlmRequirement.payTo, testCase.payTo);
     }
+  }
+});
+
+test("scrape and collect routes expose USDC and XLM on both mainnet and testnet when configured", async () => {
+  const client = new x402HTTPClient(new x402Client());
+  const cases = [
+    {
+      route: "/scrape/extract",
+      url: `${context.appBaseUrl}/scrape/extract`,
+      body: { url: "https://scrape.example/article" },
+      network: "stellar:pubnet",
+      payTo: process.env.MAINNET_PAY_TO_ADDRESS!,
+      xlmContract: mainnetXlmContract,
+    },
+    {
+      route: "/testnet/scrape/extract",
+      url: `${context.appBaseUrl}/testnet/scrape/extract`,
+      body: { url: "https://scrape.example/article" },
+      network: "stellar:testnet",
+      payTo: process.env.TESTNET_PAY_TO_ADDRESS!,
+      xlmContract: testnetXlmContract,
+    },
+    {
+      route: "/collect/run",
+      url: `${context.appBaseUrl}/collect/run`,
+      body: { seed_url: "https://collect.example/blog" },
+      network: "stellar:pubnet",
+      payTo: process.env.MAINNET_PAY_TO_ADDRESS!,
+      xlmContract: mainnetXlmContract,
+    },
+    {
+      route: "/testnet/collect/run",
+      url: `${context.appBaseUrl}/testnet/collect/run`,
+      body: { seed_url: "https://collect.example/blog" },
+      network: "stellar:testnet",
+      payTo: process.env.TESTNET_PAY_TO_ADDRESS!,
+      xlmContract: testnetXlmContract,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const unpaidResponse = await fetch(testCase.url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(testCase.body),
+    });
+    assert.equal(unpaidResponse.status, 402);
+
+    const unpaidBody = (await unpaidResponse.json()) as Record<string, unknown>;
+    const paymentRequired = client.getPaymentRequiredResponse(
+      (name) => unpaidResponse.headers.get(name) ?? undefined,
+      unpaidBody,
+    );
+
+    assert.equal(unpaidBody.route, testCase.route);
+    assert.equal(paymentRequired.accepts.length, 2);
+
+    const usdcRequirement = paymentRequired.accepts.find(
+      (requirement) => requirement.asset === getUsdcAddress(testCase.network),
+    );
+    const xlmRequirement = paymentRequired.accepts.find(
+      (requirement) => requirement.asset === testCase.xlmContract,
+    );
+
+    assert.ok(usdcRequirement);
+    assert.ok(xlmRequirement);
+    assert.equal(usdcRequirement.network, testCase.network);
+    assert.equal(usdcRequirement.payTo, testCase.payTo);
+    assert.equal(xlmRequirement.network, testCase.network);
+    assert.equal(xlmRequirement.payTo, testCase.payTo);
   }
 });
 
@@ -845,4 +1086,172 @@ test("paid news route returns standardized mixed stories", async () => {
     NEWS_FEEDS.find((feed) => feed.id === "google-ai")!.feedUrl,
   );
   assert.match(String(stories[0].published_at), /^2026-03-19T11:00:00\.000Z$/);
+});
+
+test("paid scrape route extracts metadata, markdown, links, and cache state", async () => {
+  const url = `${context.appBaseUrl}/scrape/extract`;
+  const requestBody = {
+    url: "https://scrape.example/article",
+    format: "markdown",
+    include_links: true,
+    include_metadata: true,
+    include_json_ld: true,
+    max_chars: 50000,
+  };
+
+  const unpaidResponse = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+  assert.equal(unpaidResponse.status, 402);
+
+  const unpaidBody = (await unpaidResponse.json()) as Record<string, unknown>;
+  const client = createTestPaymentClient();
+  const paymentRequired = client.getPaymentRequiredResponse(
+    (name) => unpaidResponse.headers.get(name) ?? undefined,
+    unpaidBody,
+  );
+  const paymentPayload = await client.createPaymentPayload(paymentRequired);
+  const headers = {
+    "content-type": "application/json",
+    ...client.encodePaymentSignatureHeader(paymentPayload),
+  };
+
+  const firstPaidResponse = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(requestBody),
+  });
+  assert.equal(firstPaidResponse.status, 200);
+
+  const firstPaidBody = (await firstPaidResponse.json()) as Record<string, unknown>;
+  const firstData = firstPaidBody.data as Record<string, unknown>;
+
+  assert.equal(firstPaidBody.network, "mainnet");
+  assert.equal(firstPaidBody.price_usd, "0.03");
+  assert.equal(firstData.title, "Example Article");
+  assert.equal(firstData.description, "Structured extraction example");
+  assert.equal(firstData.lang, "en");
+  assert.equal(firstData.canonical_url, "https://scrape.example/article");
+  assert.equal(firstData.final_url, "https://scrape.example/article");
+  assert.equal((firstData.cache as Record<string, unknown>).hit, false);
+  assert.match(String(firstData.markdown), /Example Article/);
+  assert.match(String(firstData.text), /useful text for structured extraction/i);
+  assert.equal((firstData.links as unknown[]).length, 2);
+  assert.equal((firstData.json_ld as unknown[]).length, 1);
+
+  const secondPaidResponse = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(requestBody),
+  });
+  assert.equal(secondPaidResponse.status, 200);
+
+  const secondPaidBody = (await secondPaidResponse.json()) as Record<string, unknown>;
+  const secondData = secondPaidBody.data as Record<string, unknown>;
+  assert.equal((secondData.cache as Record<string, unknown>).hit, true);
+});
+
+test("paid collect route returns bounded same-origin results with skip reasons", async () => {
+  const url = `${context.appBaseUrl}/collect/run`;
+  const requestBody = {
+    seed_url: "https://collect.example/blog",
+    scope: "same_origin",
+    max_pages: 4,
+    max_depth: 2,
+    exclude_patterns: ["^/tag/"],
+    format: "markdown",
+    dedupe: "canonical_url",
+    max_chars_per_page: 30000,
+  };
+
+  const unpaidResponse = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+  assert.equal(unpaidResponse.status, 402);
+
+  const unpaidBody = (await unpaidResponse.json()) as Record<string, unknown>;
+  const client = createTestPaymentClient();
+  const paymentRequired = client.getPaymentRequiredResponse(
+    (name) => unpaidResponse.headers.get(name) ?? undefined,
+    unpaidBody,
+  );
+  const paymentPayload = await client.createPaymentPayload(paymentRequired);
+
+  const paidResponse = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...client.encodePaymentSignatureHeader(paymentPayload),
+    },
+    body: JSON.stringify(requestBody),
+  });
+  assert.equal(paidResponse.status, 200);
+
+  const paidBody = (await paidResponse.json()) as Record<string, unknown>;
+  const data = paidBody.data as Record<string, unknown>;
+  const results = data.results as Array<Record<string, unknown>>;
+  const skipped = data.skipped as Array<Record<string, unknown>>;
+
+  assert.equal(paidBody.network, "mainnet");
+  assert.equal(paidBody.price_usd, "0.08");
+  assert.equal(data.seed_url, "https://collect.example/blog");
+  assert.equal(data.pages_requested, 4);
+  assert.equal(data.pages_fetched, 3);
+  assert.equal(results.length, 3);
+  assert.deepEqual(
+    results.map((result) => result.final_url),
+    [
+      "https://collect.example/blog",
+      "https://collect.example/blog/post-1",
+      "https://collect.example/blog/post-2",
+    ],
+  );
+  assert.ok(skipped.some((entry) => entry.reason === "filtered_out"));
+  assert.ok(skipped.some((entry) => entry.reason === "robots_disallowed"));
+});
+
+test("paid scrape route rejects private targets", async () => {
+  const url = `${context.appBaseUrl}/scrape/extract`;
+  const requestBody = {
+    url: "http://127.0.0.1/private",
+  };
+
+  const unpaidResponse = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  });
+  assert.equal(unpaidResponse.status, 402);
+
+  const unpaidBody = (await unpaidResponse.json()) as Record<string, unknown>;
+  const client = createTestPaymentClient();
+  const paymentRequired = client.getPaymentRequiredResponse(
+    (name) => unpaidResponse.headers.get(name) ?? undefined,
+    unpaidBody,
+  );
+  const paymentPayload = await client.createPaymentPayload(paymentRequired);
+
+  const paidResponse = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...client.encodePaymentSignatureHeader(paymentPayload),
+    },
+    body: JSON.stringify(requestBody),
+  });
+  assert.equal(paidResponse.status, 400);
+
+  const paidBody = (await paidResponse.json()) as Record<string, unknown>;
+  assert.equal(paidBody.error, "invalid_request");
+  assert.equal(paidBody.message, "Target URL host is not allowed");
 });

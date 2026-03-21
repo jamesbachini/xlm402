@@ -41,6 +41,20 @@ The repo is designed to work as both:
 Supported categories:
 `tech`, `ai`, `global`, `economics`, `blockchain`, `politics`, `sports`, `business`, `science`, `entertainment`, `gaming`, `security`, `health`
 
+### Paid extraction routes
+
+- `POST /scrape/extract`
+- `POST /testnet/scrape/extract`
+- `POST /collect/run`
+- `POST /testnet/collect/run`
+
+Extraction services are limited to ethical public-web collection:
+
+- public `http` and `https` pages only
+- robots-aware fetching
+- no login flows, CAPTCHAs, or anti-bot bypass behavior
+- bounded same-origin collection for `/collect/run`
+
 ### Paid AI routes
 
 - `POST /chat/respond`
@@ -67,6 +81,8 @@ AI routes are only published when `OPENAI_API_KEY` is configured.
 | News | `/news/:category`, `/testnet/news/:category` | Mainnet + testnet | `$0.01` |
 | Chat | `/chat/respond` | Mainnet only | `$0.05` |
 | Image | `/image/generate` | Mainnet only | `$0.10` |
+| Scrape | `/scrape/extract`, `/testnet/scrape/extract` | Mainnet + testnet | `$0.03` |
+| Collect | `/collect/run`, `/testnet/collect/run` | Mainnet + testnet | `$0.08` |
 
 Prices come from [`config/app.json`](/mnt/c/code/xlm402/config/app.json) and can be overridden with environment variables.
 
@@ -85,6 +101,7 @@ Typical flow:
 With the current implementation:
 
 - weather and news routes advertise `USDC` and `XLM` when the network's `*_XLM_CONTRACT_ADDRESS` is configured
+- scrape and collect routes advertise `USDC` and `XLM` when the network's `*_XLM_CONTRACT_ADDRESS` is configured
 - chat and image routes are mainnet-only
 
 ## Quick Start
@@ -135,6 +152,7 @@ It controls:
 - Stellar RPC URLs
 - Open-Meteo upstream URLs
 - per-service prices
+- scrape safety and cache controls
 - default OpenAI model names
 - mainnet and testnet pay-to addresses
 - facilitator URLs
@@ -183,6 +201,8 @@ Use `.env` for secrets and optional overrides. The minimal example file is [`.en
 | `NEWS_PRICE_USDC` | News route price override |
 | `CHAT_PRICE_USDC` | Chat route price override |
 | `IMAGE_PRICE_USDC` | Image route price override |
+| `SCRAPE_PRICE_USDC` | Scrape route price override |
+| `COLLECT_PRICE_USDC` | Collect route price override |
 | `MAINNET_PAY_TO_ADDRESS` | Mainnet payment recipient |
 | `MAINNET_FACILITATOR_URL` | Mainnet facilitator URL |
 | `MAINNET_FACILITATOR_API_KEY` | Mainnet facilitator auth token |

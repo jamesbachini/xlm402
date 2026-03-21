@@ -433,6 +433,8 @@ export function renderDocsPage(catalog: PlatformCatalog) {
   const newsEndpoints = endpoints.filter((ep) => ep.serviceId === "news");
   const chatEndpoints = endpoints.filter((ep) => ep.serviceId === "chat");
   const imageEndpoints = endpoints.filter((ep) => ep.serviceId === "image");
+  const scrapeEndpoints = endpoints.filter((ep) => ep.serviceId === "scrape");
+  const collectEndpoints = endpoints.filter((ep) => ep.serviceId === "collect");
 
   const unpaidExample = `{
   "error": "payment_required",
@@ -490,6 +492,10 @@ X402_FACILITATOR_API_KEY=<your-openzeppelin-api-key>`;
     sidebarLinks.push({ href: "#chat", label: "Chat API" });
   if (imageEndpoints.length > 0)
     sidebarLinks.push({ href: "#image", label: "Image API" });
+  if (scrapeEndpoints.length > 0)
+    sidebarLinks.push({ href: "#scrape", label: "Scrape API" });
+  if (collectEndpoints.length > 0)
+    sidebarLinks.push({ href: "#collect", label: "Collect API" });
 
   return layout({
     title: "Documentation | xlm402.com",
@@ -518,7 +524,7 @@ X402_FACILITATOR_API_KEY=<your-openzeppelin-api-key>`;
               <p class="docs-p">
                 xlm402 provides paid API services over the
                 <a href="https://www.x402.org/" target="_blank" rel="noopener noreferrer">x402 payment protocol</a>
-                on the Stellar network. Weather and news routes on both networks expose USDC and XLM,
+                on the Stellar network. Weather, news, scrape, and collect routes on both networks expose USDC and XLM,
                 with no API keys or subscriptions required.
               </p>
               <div class="docs-steps">
@@ -537,6 +543,14 @@ X402_FACILITATOR_API_KEY=<your-openzeppelin-api-key>`;
                 <div class="docs-step">
                   <h4>Image</h4>
                   <p>Prompt-to-image generation with base64 output. Mainnet only, requires <code>OPENAI_API_KEY</code>.</p>
+                </div>
+                <div class="docs-step">
+                  <h4>Scrape</h4>
+                  <p>Public-page extraction with robots-aware fetching, metadata, text, markdown, links, and JSON-LD.</p>
+                </div>
+                <div class="docs-step">
+                  <h4>Collect</h4>
+                  <p>Bounded same-origin collection from a seed URL with regex filtering and dedupe controls.</p>
                 </div>
               </div>
             </section>
@@ -771,6 +785,49 @@ curl ${config.publicBaseUrl}/weather/current?latitude=51.5&longitude=-0.1`)}
                 { name: "output_format", detail: "Optional. jpeg, png, or webp." },
               ])}
               ${renderEndpointSection("Image Endpoint", "Prompt-to-image generation with base64 output.", imageEndpoints)}
+            </section>
+            ` : ""}
+
+            <!-- Scrape Reference -->
+            ${scrapeEndpoints.length > 0 ? `
+            <section class="docs-section" id="scrape">
+              <div class="docs-section-label">API Reference</div>
+              <h2>Scrape API</h2>
+              <p class="docs-p">
+                Public HTML extraction on mainnet and testnet. Requests must target public <code>http</code> or <code>https</code>
+                pages and the service respects <code>robots.txt</code>.
+              </p>
+              ${renderParamTable([
+                { name: "url", detail: "Required. Absolute public http or https URL." },
+                { name: "format", detail: "Optional. text or markdown. Defaults to markdown." },
+                { name: "include_links", detail: "Optional. Boolean, defaults to true." },
+                { name: "include_metadata", detail: "Optional. Boolean, defaults to true." },
+                { name: "include_json_ld", detail: "Optional. Boolean, defaults to true." },
+                { name: "max_chars", detail: "Optional. Integer 1000-100000, defaults to 50000." },
+              ])}
+              ${renderEndpointSection("Scrape Endpoint", "Single-URL extraction for public pages.", scrapeEndpoints)}
+            </section>
+            ` : ""}
+
+            <!-- Collect Reference -->
+            ${collectEndpoints.length > 0 ? `
+            <section class="docs-section" id="collect">
+              <div class="docs-section-label">API Reference</div>
+              <h2>Collect API</h2>
+              <p class="docs-p">
+                Synchronous same-origin collection for small public datasets. Use include and exclude regex filters
+                to bound the crawl and choose canonical or final-URL dedupe.
+              </p>
+              ${renderParamTable([
+                { name: "seed_url", detail: "Required. Absolute public http or https URL." },
+                { name: "scope", detail: "Optional. same_origin only in v1." },
+                { name: "max_pages", detail: "Optional. Integer 1-10, defaults to 10." },
+                { name: "max_depth", detail: "Optional. Integer 0-2, defaults to 2." },
+                { name: "include_patterns / exclude_patterns", detail: "Optional. Arrays of regex strings matched against path and query." },
+                { name: "dedupe", detail: "Optional. canonical_url or final_url. Defaults to canonical_url." },
+                { name: "max_chars_per_page", detail: "Optional. Integer 1000-50000, defaults to 30000." },
+              ])}
+              ${renderEndpointSection("Collect Endpoint", "Small bounded collection runs from one seed URL.", collectEndpoints)}
             </section>
             ` : ""}
 

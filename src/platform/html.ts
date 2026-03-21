@@ -22,6 +22,10 @@ function serviceIcon(id: string): string {
       return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8c0 3.4 2.1 6.3 5 7.4V20l3-2 3 2v-2.6c2.9-1.1 5-4 5-7.4a8 8 0 0 0-8-8z"/><circle cx="10" cy="10" r="1"/><circle cx="14" cy="10" r="1"/></svg>`;
     case "image":
       return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`;
+    case "scrape":
+      return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H4z"/><path d="M8 20h8"/><path d="M12 16v4"/><path d="M7 8h10"/><path d="M7 12h6"/></svg>`;
+    case "collect":
+      return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M8 7.5 10.5 16"/><path d="M16 7.5 13.5 16"/><path d="M8 6h8"/></svg>`;
     default:
       return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
   }
@@ -37,6 +41,10 @@ function serviceAccentColor(id: string): string {
       return "#a78bfa";
     case "image":
       return "#f472b6";
+    case "scrape":
+      return "#38bdf8";
+    case "collect":
+      return "#34d399";
     default:
       return "#7de2d1";
   }
@@ -2350,4 +2358,3 @@ export function renderServicePage(
     `,
   });
 }
-

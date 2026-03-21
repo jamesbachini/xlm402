@@ -5,7 +5,7 @@ import path from "node:path";
 
 export type NetworkLabel = "testnet" | "mainnet";
 export type StellarNetwork = "stellar:testnet" | "stellar:pubnet";
-export type ServiceId = "weather" | "news" | "chat" | "image";
+export type ServiceId = "weather" | "news" | "chat" | "image" | "scrape" | "collect";
 
 export type PaymentNetworkConfig = {
   label: NetworkLabel;
@@ -28,6 +28,13 @@ type OpenAIConfig = {
   imageModel: string;
 };
 
+type ScrapeConfig = {
+  cacheTtlSeconds: number;
+  maxBodyBytes: number;
+  maxRedirects: number;
+  userAgent: string;
+};
+
 type NetworkFileConfig = {
   payToAddress: string;
   facilitatorUrl: string;
@@ -48,6 +55,7 @@ type PublicConfigFile = {
     openMeteoArchiveBaseUrl: string;
   };
   prices: ServicePricing;
+  scrape: ScrapeConfig;
   openai: {
     chatModel: string;
     imageModel: string;
@@ -69,6 +77,7 @@ type Config = {
   logPayments: boolean;
   xlmEnabled: boolean;
   prices: ServicePricing;
+  scrape: ScrapeConfig;
   networks: Record<NetworkLabel, PaymentNetworkConfig>;
   openai: OpenAIConfig;
 };
@@ -202,6 +211,15 @@ function parseBoolean(name: string, fallback: boolean): boolean {
   throw new Error(`${name} must be true or false`);
 }
 
+function parseStringValue(name: string, raw: string): string {
+  const value = raw.trim();
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
+
+  return value;
+}
+
 const fileConfig = readConfigFile();
 
 function readNetworkConfig(
@@ -299,6 +317,29 @@ export const config: Config = {
       "IMAGE_PRICE_USDC",
       parsePriceValue("prices.image", fileConfig.prices.image),
     ),
+    scrape: parsePrice(
+      "SCRAPE_PRICE_USDC",
+      parsePriceValue("prices.scrape", fileConfig.prices.scrape),
+    ),
+    collect: parsePrice(
+      "COLLECT_PRICE_USDC",
+      parsePriceValue("prices.collect", fileConfig.prices.collect),
+    ),
+  },
+  scrape: {
+    cacheTtlSeconds: parseIntegerValue(
+      "scrape.cacheTtlSeconds",
+      fileConfig.scrape.cacheTtlSeconds,
+    ),
+    maxBodyBytes: parseIntegerValue(
+      "scrape.maxBodyBytes",
+      fileConfig.scrape.maxBodyBytes,
+    ),
+    maxRedirects: parseIntegerValue(
+      "scrape.maxRedirects",
+      fileConfig.scrape.maxRedirects,
+    ),
+    userAgent: parseStringValue("scrape.userAgent", fileConfig.scrape.userAgent),
   },
   networks: {
     mainnet: readNetworkConfig("MAINNET", "mainnet", "", "stellar:pubnet"),
