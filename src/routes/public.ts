@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { config, getRoutePaymentAssets } from "../config.js";
+import { config, getPlatformPaymentAssets, getRoutePaymentAssets } from "../config.js";
 import { buildPlatformCatalog } from "../platform/catalog.js";
 import { renderIndexPage, renderServicePage } from "../platform/html.js";
 import { renderDocsPage } from "../platform/docs.js";
@@ -45,7 +45,7 @@ publicRouter.get("/health", (_req, res) => {
     services: catalog.services.map((service) => service.id),
     published_routes: catalog.publishedEndpoints.length,
     networks: Object.keys(config.networks),
-    payment_assets: ["USDC"],
+    payment_assets: getPlatformPaymentAssets(),
     openai_enabled: config.openai.enabled,
   });
 });
@@ -76,7 +76,7 @@ publicRouter.get("/api/catalog", (_req, res) => {
   res.json({
     service: config.platformName,
     public_base_url: config.publicBaseUrl,
-    payment_assets: ["USDC"],
+    payment_assets: getPlatformPaymentAssets(),
     openai_enabled: config.openai.enabled,
     services: catalog.services,
     endpoints: catalog.publishedEndpoints.map((endpoint) => ({

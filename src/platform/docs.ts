@@ -518,7 +518,7 @@ X402_FACILITATOR_API_KEY=<your-openzeppelin-api-key>`;
               <p class="docs-p">
                 xlm402 provides paid API services over the
                 <a href="https://www.x402.org/" target="_blank" rel="noopener noreferrer">x402 payment protocol</a>
-                on the Stellar network. Mainnet routes currently accept USDC, while testnet routes expose USDC and XLM,
+                on the Stellar network. Weather and news routes on both networks expose USDC and XLM,
                 with no API keys or subscriptions required.
               </p>
               <div class="docs-steps">

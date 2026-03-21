@@ -84,8 +84,7 @@ Typical flow:
 
 With the current implementation:
 
-- mainnet routes advertise `USDC`
-- testnet weather and news routes can advertise `USDC` and `XLM` when `TESTNET_XLM_CONTRACT_ADDRESS` is configured
+- weather and news routes advertise `USDC` and `XLM` when the network's `*_XLM_CONTRACT_ADDRESS` is configured
 - chat and image routes are mainnet-only
 
 ## Quick Start

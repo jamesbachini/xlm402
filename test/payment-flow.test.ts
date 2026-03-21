@@ -449,7 +449,40 @@ test("catalogue HTML uses the v2 payment flow and bundled Freighter client", () 
   assert.doesNotMatch(html, /A beautiful sunset over the ocean/);
 });
 
-test("weather routes expose USDC on mainnet and USDC plus XLM on testnet", async () => {
+test("public discovery endpoints advertise XLM when enabled for any configured network", async () => {
+  const [healthResponse, catalogResponse] = await Promise.all([
+    fetch(`${context.appBaseUrl}/health`),
+    fetch(`${context.appBaseUrl}/api/catalog`),
+  ]);
+
+  assert.equal(healthResponse.status, 200);
+  assert.equal(catalogResponse.status, 200);
+
+  const healthBody = (await healthResponse.json()) as {
+    payment_assets: string[];
+  };
+  const catalogBody = (await catalogResponse.json()) as {
+    payment_assets: string[];
+    endpoints: Array<{ network: string; payment_assets: string[] }>;
+  };
+
+  assert.deepEqual(healthBody.payment_assets, ["USDC", "XLM"]);
+  assert.deepEqual(catalogBody.payment_assets, ["USDC", "XLM"]);
+
+  const mainnetEndpoint = catalogBody.endpoints.find(
+    (endpoint) => endpoint.network === "mainnet",
+  );
+  const testnetEndpoint = catalogBody.endpoints.find(
+    (endpoint) => endpoint.network === "testnet",
+  );
+
+  assert.ok(mainnetEndpoint);
+  assert.ok(testnetEndpoint);
+  assert.deepEqual(mainnetEndpoint.payment_assets, ["USDC", "XLM"]);
+  assert.deepEqual(testnetEndpoint.payment_assets, ["USDC", "XLM"]);
+});
+
+test("weather routes expose USDC and XLM on both mainnet and testnet when configured", async () => {
   const client = new x402HTTPClient(new x402Client());
   const cases = [
     {
@@ -460,8 +493,8 @@ test("weather routes expose USDC on mainnet and USDC plus XLM on testnet", async
       network: "stellar:pubnet",
       payTo: process.env.MAINNET_PAY_TO_ADDRESS!,
       xlmContract: mainnetXlmContract,
-      expectedAccepts: 1,
-      expectsXlm: false,
+      expectedAccepts: 2,
+      expectsXlm: true,
     },
     {
       route: "/testnet/weather/current",
@@ -507,7 +540,7 @@ test("weather routes expose USDC on mainnet and USDC plus XLM on testnet", async
   }
 });
 
-test("news routes expose USDC on mainnet and USDC plus XLM on testnet", async () => {
+test("news routes expose USDC and XLM on both mainnet and testnet when configured", async () => {
   const client = new x402HTTPClient(new x402Client());
   const cases = [
     {
@@ -516,8 +549,8 @@ test("news routes expose USDC on mainnet and USDC plus XLM on testnet", async ()
       network: "stellar:pubnet",
       payTo: process.env.MAINNET_PAY_TO_ADDRESS!,
       xlmContract: mainnetXlmContract,
-      expectedAccepts: 1,
-      expectsXlm: false,
+      expectedAccepts: 2,
+      expectsXlm: true,
     },
     {
       route: "/testnet/news/global",
@@ -731,17 +764,19 @@ test("settlement failures return the facilitator error instead of a blank body",
     (name) => unpaidResponse.headers.get(name) ?? undefined,
     unpaidBody,
   );
-  assert.equal(paymentRequired.accepts.length, 1);
+  assert.equal(paymentRequired.accepts.length, 2);
   const paymentPayload = await client.createPaymentPayload(paymentRequired);
   const paidResponse = await fetch(url, {
     headers: client.encodePaymentSignatureHeader(paymentPayload),
   });
   const paidBody = (await paidResponse.json()) as Record<string, unknown>;
+  const settledRequirements = context.facilitatorRequests.settle[0]
+    .paymentRequirements as Record<string, unknown>;
 
   assert.equal(paidResponse.status, 402);
   assert.equal(paidBody.error, "payment_settlement_failed");
   assert.equal(paidBody.reason, "asset_not_supported");
-  assert.match(String(paidBody.message), new RegExp(getUsdcAddress("stellar:pubnet")));
+  assert.match(String(paidBody.message), new RegExp(String(settledRequirements.asset)));
   assert.equal(paidBody.route, "/weather/current");
 });
 

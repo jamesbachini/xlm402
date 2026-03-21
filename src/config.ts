@@ -321,7 +321,6 @@ export function getRoutePaymentAssets(
     typeof network === "string" ? config.networks[network] : network;
 
   if (
-    networkConfig.label === "testnet" &&
     typeof networkConfig.xlmContractAddress === "string" &&
     networkConfig.xlmContractAddress.length > 0
   ) {
@@ -329,4 +328,8 @@ export function getRoutePaymentAssets(
   }
 
   return ["USDC"];
+}
+
+export function getPlatformPaymentAssets(): Array<"USDC" | "XLM"> {
+  return config.xlmEnabled ? ["USDC", "XLM"] : ["USDC"];
 }
