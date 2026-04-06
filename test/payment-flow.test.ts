@@ -847,6 +847,29 @@ test("public discovery endpoints advertise XLM when enabled for any configured n
   assert.ok(!catalogBody.endpoints.some((endpoint) => endpoint.path === "/testnet/easteregg"));
 });
 
+test("browser paywall renders the correct 0.01 USDC weather price", async () => {
+  const response = await fetch(
+    `${context.appBaseUrl}/weather/current?latitude=51.5072&longitude=-0.1276&timezone=auto`,
+    {
+      headers: {
+        Accept: "text/html",
+        "User-Agent": "Mozilla/5.0",
+      },
+    },
+  );
+
+  assert.equal(response.status, 402);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html/);
+
+  const html = await response.text();
+
+  assert.match(html, /Payment Required/);
+  assert.match(html, /Amount: \$0\.01 USDC/);
+  assert.match(html, /0\.04 XLM/);
+  assert.doesNotMatch(html, /Amount: \$0\.10 USDC/);
+  assert.doesNotMatch(html, /Install <code>@x402\/paywall<\/code>/);
+});
+
 test("hidden easteregg route stays out of public discovery metadata", async () => {
   const [catalogResponse, manifestResponse] = await Promise.all([
     fetch(`${context.appBaseUrl}/api/catalog`),

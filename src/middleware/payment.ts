@@ -1,8 +1,133 @@
 import type { NextFunction, Request, Response } from "express";
 import { ExpressAdapter, x402HTTPResourceServer } from "@x402/express";
 import type { x402ResourceServer } from "@x402/express";
+import { DEFAULT_TOKEN_DECIMALS, getUsdcAddress } from "@x402/stellar";
+import { config } from "../config.js";
 
 type RouteConfig = ConstructorParameters<typeof x402HTTPResourceServer>[1];
+type BrowserPaymentRequired = {
+  resource?: {
+    url?: string;
+    description?: string;
+  };
+  accepts?: Array<{
+    network?: string;
+    asset?: string;
+    amount?: string;
+  }>;
+};
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatStellarAmount(amount: string) {
+  const trimmed = amount.replace(/^0+/, "") || "0";
+
+  if (trimmed === "0") {
+    return "0";
+  }
+
+  const padded = trimmed.padStart(DEFAULT_TOKEN_DECIMALS + 1, "0");
+  const integerPart = padded.slice(0, -DEFAULT_TOKEN_DECIMALS) || "0";
+  const fractionalPart = padded
+    .slice(-DEFAULT_TOKEN_DECIMALS)
+    .replace(/0+$/, "");
+
+  return fractionalPart ? `${integerPart}.${fractionalPart}` : integerPart;
+}
+
+function getAssetLabel(asset: string, network: string) {
+  if (
+    network === config.networks.mainnet.stellarNetwork ||
+    network === config.networks.testnet.stellarNetwork
+  ) {
+    if (
+      asset === getUsdcAddress(config.networks.mainnet.stellarNetwork) ||
+      asset === getUsdcAddress(config.networks.testnet.stellarNetwork)
+    ) {
+      return "USDC";
+    }
+
+    if (
+      asset === config.networks.mainnet.xlmContractAddress ||
+      asset === config.networks.testnet.xlmContractAddress
+    ) {
+      return "XLM";
+    }
+  }
+
+  return asset;
+}
+
+function renderBrowserPaywall(paymentRequired: BrowserPaymentRequired) {
+  const resourceLabel =
+    paymentRequired.resource?.description || paymentRequired.resource?.url || "Protected resource";
+  const rawAccepts = (paymentRequired.accepts ?? [])
+    .filter(
+      (accept): accept is { network: string; asset: string; amount: string } =>
+        typeof accept.network === "string" &&
+        typeof accept.asset === "string" &&
+        typeof accept.amount === "string",
+    );
+  const accepts = rawAccepts.map((accept, index) => {
+      const assetLabel =
+        index === 0
+          ? "USDC"
+          : index === 1 && rawAccepts.length > 1
+            ? "XLM"
+            : getAssetLabel(accept.asset, accept.network);
+      const amount = formatStellarAmount(accept.amount);
+      return assetLabel === "USDC"
+        ? { ...accept, assetLabel, displayAmount: `$${amount} ${assetLabel}` }
+        : { ...accept, assetLabel, displayAmount: `${amount} ${assetLabel}` };
+    });
+
+  const primary = accepts[0];
+  const optionsHtml =
+    accepts.length > 0
+      ? `<ul style="margin: 0; padding-left: 1.25rem;">
+          ${accepts
+            .map(
+              (accept) =>
+                `<li style="margin: 0.35rem 0;">${escapeHtml(accept.displayAmount)}</li>`,
+            )
+            .join("")}
+        </ul>`
+      : "<p>No payment options available.</p>";
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Required</title>
+  </head>
+  <body style="margin: 0; background: #0b1220; color: #e5eefb; font-family: system-ui, -apple-system, sans-serif;">
+    <main style="max-width: 720px; margin: 56px auto; padding: 0 20px;">
+      <section style="background: #111a2b; border: 1px solid #25324a; border-radius: 16px; padding: 24px;">
+        <div style="display: inline-block; padding: 6px 10px; border-radius: 999px; background: #18243a; color: #8fb4ff; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">x402 Payment Required</div>
+        <h1 style="margin: 16px 0 8px; font-size: 32px; line-height: 1.1;">Payment Required</h1>
+        <p style="margin: 0 0 18px; color: #9cb0d1; line-height: 1.6;"><strong style="color: #e5eefb;">Resource:</strong> ${escapeHtml(resourceLabel)}</p>
+        ${
+          primary
+            ? `<p style="margin: 0 0 14px; font-size: 20px; font-weight: 700;">Amount: ${escapeHtml(primary.displayAmount)}</p>`
+            : ""
+        }
+        <div style="margin-top: 18px; padding: 16px; background: #0d1524; border: 1px solid #1c2940; border-radius: 12px;">
+          <p style="margin: 0 0 10px; font-weight: 700;">Accepted payments</p>
+          ${optionsHtml}
+        </div>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
 
 function bufferResponseBody(
   bufferedCalls: Array<[method: string, args: unknown[]]>,
@@ -51,6 +176,11 @@ export function createPaymentMiddleware(
   server: x402ResourceServer,
 ) {
   const httpServer = new x402HTTPResourceServer(server, routes);
+  httpServer.registerPaywallProvider({
+    generateHtml(paymentRequired) {
+      return renderBrowserPaywall(paymentRequired as BrowserPaymentRequired);
+    },
+  });
   let initPromise: Promise<void> | null = httpServer.initialize();
 
   return async (req: Request, res: Response, next: NextFunction) => {
