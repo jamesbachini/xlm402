@@ -531,6 +531,7 @@ For production deployment you will typically want to:
 
 ```bash
 git pull origin main; npm run build; pm2 restart xlm402
+```
 
 The hosted project URL configured in this repo is:
 
