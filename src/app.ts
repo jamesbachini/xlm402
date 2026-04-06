@@ -8,6 +8,7 @@ import { createChatRouter } from "./routes/chat.js";
 import { createImageRouter } from "./routes/image.js";
 import { createNewsRouter } from "./routes/news.js";
 import { createCryptoRouter } from "./routes/crypto.js";
+import { createEasterEggRouter } from "./routes/easteregg.js";
 import { createCollectRouter, createScrapeRouter } from "./routes/scrape.js";
 import { createWeatherRouter } from "./routes/weather.js";
 import { createX402Middleware } from "./middleware/x402.js";
@@ -39,6 +40,8 @@ export async function createApp() {
 
   app.use(publicRouter);
   app.use(await createX402Middleware());
+  app.use(createEasterEggRouter());
+  app.use("/testnet", createEasterEggRouter());
   app.use(
     "/weather",
     createWeatherRouter({

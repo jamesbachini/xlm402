@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { AddressInfo } from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { after, before, test } from "node:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { getUsdcAddress } from "@x402/stellar";
@@ -36,6 +39,8 @@ let context: AppContext;
 let originalFetch: typeof fetch;
 let mainnetXlmContract: string;
 let testnetXlmContract: string;
+let easterEggRecordDir: string;
+let easterEggRecordFile: string;
 
 function buildRssFeed(items: Array<{
   title: string;
@@ -730,6 +735,9 @@ before(async () => {
   process.env.TESTNET_XLM_CONTRACT_ADDRESS = testnetXlmContract;
   process.env.OPEN_METEO_BASE_URL = weatherServer.baseUrl;
   process.env.OPEN_METEO_ARCHIVE_BASE_URL = weatherServer.baseUrl;
+  easterEggRecordDir = mkdtempSync(path.join(os.tmpdir(), "xlm402-easteregg-"));
+  easterEggRecordFile = path.join(easterEggRecordDir, "addresses.jsonl");
+  process.env.EASTEREGG_RECORD_FILE = easterEggRecordFile;
 
   const [{ createApp }, docsModule, catalogModule] = await Promise.all([
     import("../src/app.ts"),
@@ -767,6 +775,7 @@ before(async () => {
 after(async () => {
   globalThis.fetch = originalFetch;
   await context.close();
+  rmSync(easterEggRecordDir, { recursive: true, force: true });
 });
 
 test.afterEach(() => {
@@ -834,6 +843,125 @@ test("public discovery endpoints advertise XLM when enabled for any configured n
   assert.ok(catalogBody.endpoints.some((endpoint) => endpoint.service === "scrape"));
   assert.ok(catalogBody.endpoints.some((endpoint) => endpoint.service === "collect"));
   assert.ok(catalogBody.endpoints.some((endpoint) => endpoint.service === "crypto"));
+  assert.ok(!catalogBody.endpoints.some((endpoint) => endpoint.path === "/easteregg"));
+  assert.ok(!catalogBody.endpoints.some((endpoint) => endpoint.path === "/testnet/easteregg"));
+});
+
+test("hidden easteregg route stays out of public discovery metadata", async () => {
+  const [catalogResponse, manifestResponse] = await Promise.all([
+    fetch(`${context.appBaseUrl}/api/catalog`),
+    fetch(`${context.appBaseUrl}/.well-known/x402`),
+  ]);
+
+  assert.equal(catalogResponse.status, 200);
+  assert.equal(manifestResponse.status, 200);
+
+  const catalogBody = (await catalogResponse.json()) as {
+    endpoints: Array<{ path: string }>;
+  };
+  const manifestBody = (await manifestResponse.json()) as {
+    resources: Array<{ path: string }>;
+  };
+
+  assert.ok(!catalogBody.endpoints.some((endpoint) => endpoint.path === "/easteregg"));
+  assert.ok(!catalogBody.endpoints.some((endpoint) => endpoint.path === "/testnet/easteregg"));
+  assert.ok(!manifestBody.resources.some((resource) => resource.path === "/easteregg"));
+  assert.ok(!manifestBody.resources.some((resource) => resource.path === "/testnet/easteregg"));
+});
+
+test("hidden easteregg route records payer addresses on mainnet USDC and testnet XLM", async () => {
+  const client = new x402HTTPClient(new x402Client());
+  const mainnetUnpaid = await fetch(`${context.appBaseUrl}/easteregg`);
+
+  assert.equal(mainnetUnpaid.status, 402);
+
+  const mainnetUnpaidBody = (await mainnetUnpaid.json()) as Record<string, unknown>;
+  const mainnetRequired = client.getPaymentRequiredResponse(
+    (name) => mainnetUnpaid.headers.get(name) ?? undefined,
+    mainnetUnpaidBody,
+  );
+  const mainnetUsdc = mainnetRequired.accepts.find(
+    (requirement) => requirement.asset === getUsdcAddress("stellar:pubnet"),
+  );
+  const mainnetXlm = mainnetRequired.accepts.find(
+    (requirement) => requirement.asset === mainnetXlmContract,
+  );
+
+  assert.equal(mainnetUnpaidBody.route, "/easteregg");
+  assert.equal(mainnetRequired.accepts.length, 2);
+  assert.ok(mainnetUsdc);
+  assert.ok(mainnetXlm);
+  assert.equal(mainnetUsdc.amount, "100000");
+  assert.equal(mainnetXlm.amount, "100000");
+
+  const mainnetPayload = await createTestPaymentClient().createPaymentPayload(mainnetRequired);
+  const mainnetPaid = await fetch(`${context.appBaseUrl}/easteregg`, {
+    headers: createTestPaymentClient().encodePaymentSignatureHeader(mainnetPayload),
+  });
+
+  assert.equal(mainnetPaid.status, 200);
+  assert.equal(
+    await mainnetPaid.text(),
+    "Thank you, your address has been recorded. Stand by...",
+  );
+
+  const testnetUnpaid = await fetch(`${context.appBaseUrl}/testnet/easteregg`);
+
+  assert.equal(testnetUnpaid.status, 402);
+
+  const testnetUnpaidBody = (await testnetUnpaid.json()) as Record<string, unknown>;
+  const xlmClient = new x402HTTPClient(
+    new x402Client((_x402Version, accepts) => {
+      const match = accepts.find(
+        (requirement) => requirement.asset === testnetXlmContract,
+      );
+      assert.ok(match);
+      return match;
+    }).register("stellar:*", {
+      scheme: "exact",
+      async createPaymentPayload(x402Version: number) {
+        return {
+          x402Version,
+          payload: {
+            provider: "integration-test",
+            asset: "XLM",
+          },
+        };
+      },
+    }),
+  );
+  const testnetRequired = xlmClient.getPaymentRequiredResponse(
+    (name) => testnetUnpaid.headers.get(name) ?? undefined,
+    testnetUnpaidBody,
+  );
+  const testnetPaid = await fetch(`${context.appBaseUrl}/testnet/easteregg`, {
+    headers: xlmClient.encodePaymentSignatureHeader(
+      await xlmClient.createPaymentPayload(testnetRequired),
+    ),
+  });
+
+  assert.equal(testnetPaid.status, 200);
+  assert.equal(
+    await testnetPaid.text(),
+    "Thank you, your address has been recorded. Stand by...",
+  );
+
+  const recordedEntries = readFileSync(easterEggRecordFile, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+  assert.equal(recordedEntries.length, 2);
+  assert.equal(recordedEntries[0].payer, "GTESTPAYER");
+  assert.equal(recordedEntries[0].route, "/easteregg");
+  assert.equal(recordedEntries[0].network, "mainnet");
+  assert.equal(recordedEntries[0].asset, "USDC");
+  assert.equal(recordedEntries[0].amount, "0.01");
+  assert.equal(recordedEntries[1].payer, "GTESTPAYER");
+  assert.equal(recordedEntries[1].route, "/testnet/easteregg");
+  assert.equal(recordedEntries[1].network, "testnet");
+  assert.equal(recordedEntries[1].asset, "XLM");
+  assert.equal(recordedEntries[1].amount, "0.01");
 });
 
 test("weather routes expose USDC and XLM on both mainnet and testnet when configured", async () => {
