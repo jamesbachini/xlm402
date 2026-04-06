@@ -9,7 +9,7 @@ export const EASTER_EGG_TESTNET_PATH = `/testnet${EASTER_EGG_ROUTE}`;
 export const EASTER_EGG_MESSAGE =
   "Thank you, your address has been recorded. Stand by...";
 export const EASTER_EGG_AMOUNT_DECIMAL = "0.01";
-export const EASTER_EGG_AMOUNT_STROOPS = convertToTokenAmount(
+export const EASTER_EGG_USDC_AMOUNT_STROOPS = convertToTokenAmount(
   EASTER_EGG_AMOUNT_DECIMAL,
   DEFAULT_TOKEN_DECIMALS,
 );
@@ -54,4 +54,24 @@ export async function recordEasterEggAddress(record: EasterEggRecord) {
     })}\n`,
     "utf8",
   );
+}
+
+export function formatTokenAmount(amount: string) {
+  const trimmed = amount.replace(/^0+/, "") || "0";
+
+  if (trimmed === "0") {
+    return "0";
+  }
+
+  const padded = trimmed.padStart(DEFAULT_TOKEN_DECIMALS + 1, "0");
+  const integerPart = padded.slice(0, -DEFAULT_TOKEN_DECIMALS) || "0";
+  const fractionalPart = padded
+    .slice(-DEFAULT_TOKEN_DECIMALS)
+    .replace(/0+$/, "");
+
+  if (!fractionalPart) {
+    return integerPart;
+  }
+
+  return `${integerPart}.${fractionalPart}`;
 }

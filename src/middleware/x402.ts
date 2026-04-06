@@ -12,9 +12,10 @@ import { buildPlatformCatalog } from "../platform/catalog.js";
 import { usdToXlm } from "../services/xlmPrice.js";
 import {
   EASTER_EGG_AMOUNT_DECIMAL,
-  EASTER_EGG_AMOUNT_STROOPS,
+  EASTER_EGG_USDC_AMOUNT_STROOPS,
   EASTER_EGG_MAINNET_PATH,
   EASTER_EGG_TESTNET_PATH,
+  formatTokenAmount,
   isEasterEggPath,
   recordEasterEggAddress,
 } from "../services/easteregg.js";
@@ -208,13 +209,20 @@ export async function createX402Middleware() {
       networkConfig: config.networks.testnet,
     },
   ].map((endpoint) => {
-    const accepts = [
+    const accepts: Array<{
+      scheme: "exact";
+      network: typeof endpoint.networkConfig.stellarNetwork;
+      price:
+        | { asset: string; amount: string; extra?: Record<string, unknown> }
+        | (() => Promise<{ asset: string; amount: string; extra?: Record<string, unknown> }>);
+      payTo: string;
+    }> = [
       {
         scheme: "exact" as const,
         network: endpoint.networkConfig.stellarNetwork,
         price: {
           asset: getUsdcAddress(endpoint.networkConfig.stellarNetwork),
-          amount: EASTER_EGG_AMOUNT_STROOPS,
+          amount: EASTER_EGG_USDC_AMOUNT_STROOPS,
         },
         payTo: endpoint.networkConfig.payToAddress,
       },
@@ -224,10 +232,13 @@ export async function createX402Middleware() {
       accepts.push({
         scheme: "exact" as const,
         network: endpoint.networkConfig.stellarNetwork,
-        price: {
-          asset: endpoint.networkConfig.xlmContractAddress,
-          amount: EASTER_EGG_AMOUNT_STROOPS,
-        },
+        price: async () => ({
+          asset: endpoint.networkConfig.xlmContractAddress!,
+          amount: convertToTokenAmount(
+            await usdToXlm(EASTER_EGG_AMOUNT_DECIMAL),
+            DEFAULT_TOKEN_DECIMALS,
+          ),
+        }),
         payTo: endpoint.networkConfig.payToAddress,
       });
     }
@@ -238,24 +249,31 @@ export async function createX402Middleware() {
         accepts,
         description: "",
         mimeType: "text/plain" as const,
-        unpaidResponseBody: async () => ({
-          contentType: "application/json",
-          body: {
-            error: "payment_required",
-            message: "This endpoint requires x402 payment",
-            assets: accepts.map((paymentOption) => ({
-              asset:
-                paymentOption.price.asset === endpoint.networkConfig.xlmContractAddress
-                  ? "XLM"
-                  : "USDC",
-              amount: EASTER_EGG_AMOUNT_DECIMAL,
-            })),
-            network: endpoint.network,
-            pay_to: endpoint.networkConfig.payToAddress,
-            facilitator_url: endpoint.networkConfig.facilitatorUrl,
-            route: endpoint.fullPath,
-          },
-        }),
+        unpaidResponseBody: async () => {
+          const assets: Array<{ asset: string; amount: string }> = [
+            { asset: "USDC", amount: EASTER_EGG_AMOUNT_DECIMAL },
+          ];
+
+          if (endpoint.networkConfig.xlmContractAddress) {
+            assets.push({
+              asset: "XLM",
+              amount: await usdToXlm(EASTER_EGG_AMOUNT_DECIMAL),
+            });
+          }
+
+          return {
+            contentType: "application/json",
+            body: {
+              error: "payment_required",
+              message: "This endpoint requires x402 payment",
+              assets,
+              network: endpoint.network,
+              pay_to: endpoint.networkConfig.payToAddress,
+              facilitator_url: endpoint.networkConfig.facilitatorUrl,
+              route: endpoint.fullPath,
+            },
+          };
+        },
         settlementFailedResponseBody: async (
           _context: unknown,
           settleResult: {
@@ -319,7 +337,7 @@ export async function createX402Middleware() {
           network,
           stellarNetwork: requirements.network,
           asset: getAssetLabel(requirements.asset, network),
-          amount: EASTER_EGG_AMOUNT_DECIMAL,
+          amount: formatTokenAmount(requirements.amount),
           transaction: result.transaction,
           route: requestPath,
         });

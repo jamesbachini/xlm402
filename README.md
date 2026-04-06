@@ -527,6 +527,11 @@ For production deployment you will typically want to:
 4. configure mainnet and testnet facilitator credentials if required
 5. add `OPENAI_API_KEY` only if you want AI routes exposed
 
+## Update Notes
+
+```bash
+git pull origin main; npm run build; pm2 restart xlm402
+
 The hosted project URL configured in this repo is:
 
 - https://xlm402.com

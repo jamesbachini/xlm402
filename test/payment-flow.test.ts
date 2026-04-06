@@ -892,7 +892,11 @@ test("hidden easteregg route records payer addresses on mainnet USDC and testnet
   assert.ok(mainnetUsdc);
   assert.ok(mainnetXlm);
   assert.equal(mainnetUsdc.amount, "100000");
-  assert.equal(mainnetXlm.amount, "100000");
+  assert.equal(mainnetXlm.amount, "400000");
+  assert.deepEqual(mainnetUnpaidBody.assets, [
+    { asset: "USDC", amount: "0.01" },
+    { asset: "XLM", amount: "0.0400000" },
+  ]);
 
   const mainnetPayload = await createTestPaymentClient().createPaymentPayload(mainnetRequired);
   const mainnetPaid = await fetch(`${context.appBaseUrl}/easteregg`, {
@@ -961,7 +965,7 @@ test("hidden easteregg route records payer addresses on mainnet USDC and testnet
   assert.equal(recordedEntries[1].route, "/testnet/easteregg");
   assert.equal(recordedEntries[1].network, "testnet");
   assert.equal(recordedEntries[1].asset, "XLM");
-  assert.equal(recordedEntries[1].amount, "0.01");
+  assert.equal(recordedEntries[1].amount, "0.04");
 });
 
 test("weather routes expose USDC and XLM on both mainnet and testnet when configured", async () => {
