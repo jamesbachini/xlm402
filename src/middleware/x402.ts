@@ -4,55 +4,11 @@ import { ExactStellarScheme } from "@x402/stellar/exact/server";
 import {
   convertToTokenAmount,
   DEFAULT_TOKEN_DECIMALS,
-  getUsdcAddress,
 } from "@x402/stellar";
 import { config, getRoutePaymentAssets } from "../config.js";
 import { createPaymentMiddleware } from "./payment.js";
 import { buildPlatformCatalog } from "../platform/catalog.js";
 import { usdToXlm } from "../services/xlmPrice.js";
-import {
-  EASTER_EGG_AMOUNT_DECIMAL,
-  EASTER_EGG_USDC_AMOUNT_STROOPS,
-  EASTER_EGG_MAINNET_PATH,
-  EASTER_EGG_TESTNET_PATH,
-  formatTokenAmount,
-  isEasterEggPath,
-  recordEasterEggAddress,
-} from "../services/easteregg.js";
-
-function getPaymentPayloadCacheKey(payload: unknown) {
-  return JSON.stringify(payload);
-}
-
-function getNetworkLabelForPath(pathname: string) {
-  return pathname === EASTER_EGG_TESTNET_PATH ? "testnet" : "mainnet";
-}
-
-function getAssetLabel(
-  asset: string,
-  network: "mainnet" | "testnet",
-) {
-  const networkConfig = config.networks[network];
-
-  if (asset === getUsdcAddress(networkConfig.stellarNetwork)) {
-    return "USDC";
-  }
-
-  if (asset === networkConfig.xlmContractAddress) {
-    return "XLM";
-  }
-
-  return asset;
-}
-
-function getRequestPathFromTransportContext(transportContext: unknown) {
-  if (!transportContext || typeof transportContext !== "object") {
-    return undefined;
-  }
-
-  const request = (transportContext as { request?: { path?: unknown } }).request;
-  return typeof request?.path === "string" ? request.path : undefined;
-}
 
 export async function createX402Middleware() {
   const mainnet = config.networks.mainnet;
@@ -197,158 +153,13 @@ export async function createX402Middleware() {
     ] as const;
   });
 
-  const easterEggRoutes = [
-    {
-      network: "mainnet" as const,
-      fullPath: EASTER_EGG_MAINNET_PATH,
-      networkConfig: config.networks.mainnet,
-    },
-    {
-      network: "testnet" as const,
-      fullPath: EASTER_EGG_TESTNET_PATH,
-      networkConfig: config.networks.testnet,
-    },
-  ].map((endpoint) => {
-    const accepts: Array<{
-      scheme: "exact";
-      network: typeof endpoint.networkConfig.stellarNetwork;
-      price:
-        | { asset: string; amount: string; extra?: Record<string, unknown> }
-        | (() => Promise<{ asset: string; amount: string; extra?: Record<string, unknown> }>);
-      payTo: string;
-    }> = [
-      {
-        scheme: "exact" as const,
-        network: endpoint.networkConfig.stellarNetwork,
-        price: {
-          asset: getUsdcAddress(endpoint.networkConfig.stellarNetwork),
-          amount: EASTER_EGG_USDC_AMOUNT_STROOPS,
-        },
-        payTo: endpoint.networkConfig.payToAddress,
-      },
-    ];
-
-    if (endpoint.networkConfig.xlmContractAddress) {
-      accepts.push({
-        scheme: "exact" as const,
-        network: endpoint.networkConfig.stellarNetwork,
-        price: async () => ({
-          asset: endpoint.networkConfig.xlmContractAddress!,
-          amount: convertToTokenAmount(
-            await usdToXlm(EASTER_EGG_AMOUNT_DECIMAL),
-            DEFAULT_TOKEN_DECIMALS,
-          ),
-        }),
-        payTo: endpoint.networkConfig.payToAddress,
-      });
-    }
-
-    return [
-      `GET ${endpoint.fullPath}`,
-      {
-        accepts,
-        description: "",
-        mimeType: "text/plain" as const,
-        unpaidResponseBody: async () => {
-          const assets: Array<{ asset: string; amount: string }> = [
-            { asset: "USDC", amount: EASTER_EGG_AMOUNT_DECIMAL },
-          ];
-
-          if (endpoint.networkConfig.xlmContractAddress) {
-            assets.push({
-              asset: "XLM",
-              amount: await usdToXlm(EASTER_EGG_AMOUNT_DECIMAL),
-            });
-          }
-
-          return {
-            contentType: "application/json",
-            body: {
-              error: "payment_required",
-              message: "This endpoint requires x402 payment",
-              assets,
-              network: endpoint.network,
-              pay_to: endpoint.networkConfig.payToAddress,
-              facilitator_url: endpoint.networkConfig.facilitatorUrl,
-              route: endpoint.fullPath,
-            },
-          };
-        },
-        settlementFailedResponseBody: async (
-          _context: unknown,
-          settleResult: {
-            errorMessage?: string;
-            errorReason?: string;
-            transaction?: string;
-          },
-        ) => ({
-          contentType: "application/json",
-          body: {
-            error: "payment_settlement_failed",
-            message:
-              settleResult.errorMessage ||
-              settleResult.errorReason ||
-              "Payment settlement failed",
-            reason: settleResult.errorReason,
-            route: endpoint.fullPath,
-            network: endpoint.network,
-            transaction: settleResult.transaction || undefined,
-          },
-        }),
-      },
-    ] as const;
-  });
-
-  const routes = Object.fromEntries([
-    ...publishedRoutes,
-    ...easterEggRoutes,
-  ]);
+  const routes = Object.fromEntries(publishedRoutes);
 
   const resourceServer = new x402ResourceServer(facilitatorClients)
     .register(mainnet.stellarNetwork, new ExactStellarScheme())
     .register(testnet.stellarNetwork, new ExactStellarScheme());
 
-  const verifiedPayers = new Map<string, string>();
-
-  resourceServer.onAfterVerify(async ({ paymentPayload, result }) => {
-    if (typeof result.payer === "string" && result.payer.length > 0) {
-      verifiedPayers.set(getPaymentPayloadCacheKey(paymentPayload), result.payer);
-    }
-  });
-
-  resourceServer.onAfterSettle(
-    async ({ paymentPayload, requirements, result, transportContext }) => {
-      const paymentKey = getPaymentPayloadCacheKey(paymentPayload);
-
-      try {
-        const requestPath = getRequestPathFromTransportContext(transportContext);
-        if (!isEasterEggPath(requestPath)) {
-          return;
-        }
-
-        const payer = result.payer ?? verifiedPayers.get(paymentKey);
-        if (!payer) {
-          throw new Error("Missing payer in easter egg settlement result");
-        }
-
-        const network = getNetworkLabelForPath(requestPath);
-        await recordEasterEggAddress({
-          payer,
-          network,
-          stellarNetwork: requirements.network,
-          asset: getAssetLabel(requirements.asset, network),
-          amount: formatTokenAmount(requirements.amount),
-          transaction: result.transaction,
-          route: requestPath,
-        });
-      } finally {
-        verifiedPayers.delete(paymentKey);
-      }
-    },
-  );
-
-  resourceServer.onVerifyFailure(async ({ error, requirements, paymentPayload }) => {
-    verifiedPayers.delete(getPaymentPayloadCacheKey(paymentPayload));
+  resourceServer.onVerifyFailure(async ({ error, requirements }) => {
     console.error("[x402] verify failure", {
       network: requirements.network,
       asset: requirements.asset,
@@ -357,8 +168,7 @@ export async function createX402Middleware() {
     });
   });
 
-  resourceServer.onSettleFailure(async ({ error, requirements, paymentPayload }) => {
-    verifiedPayers.delete(getPaymentPayloadCacheKey(paymentPayload));
+  resourceServer.onSettleFailure(async ({ error, requirements }) => {
     console.error("[x402] settle failure", {
       network: requirements.network,
       asset: requirements.asset,
