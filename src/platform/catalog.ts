@@ -393,6 +393,16 @@ const endpointDefinitions: ServiceEndpoint[] = [
   },
 ];
 
+function buildNetworkRequestExample(
+  endpoint: ServiceEndpoint,
+  fullPath: string,
+) {
+  return endpoint.requestExample.replaceAll(
+    `${config.publicBaseUrl}${endpoint.route}`,
+    `${config.publicBaseUrl}${fullPath}`,
+  );
+}
+
 function isServiceLive(serviceId: ServiceId) {
   return serviceDefinitions.find((service) => service.id === serviceId)?.live ?? false;
 }
@@ -416,9 +426,12 @@ export function buildPlatformCatalog(): PlatformCatalog {
         continue;
       }
 
+      const fullPath = `${networkConfig.routePrefix}${endpoint.route}`;
+
       publishedEndpoints.push({
         ...endpoint,
-        fullPath: `${networkConfig.routePrefix}${endpoint.route}`,
+        requestExample: buildNetworkRequestExample(endpoint, fullPath),
+        fullPath,
         network,
         networkConfig,
         priceUsd,

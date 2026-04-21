@@ -32,10 +32,32 @@ type AppContext = {
   };
 };
 
+type PublishedEndpointForTest = {
+  id: string;
+  serviceId: string;
+  route: string;
+  fullPath: string;
+  network: string;
+  requestExample: string;
+};
+
+type PlatformCatalogForTest = {
+  publishedEndpoints: PublishedEndpointForTest[];
+};
+
 let context: AppContext;
 let originalFetch: typeof fetch;
 let mainnetXlmContract: string;
 let testnetXlmContract: string;
+
+function escapeHtmlForTest(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
 
 function buildRssFeed(items: Array<{
   title: string;
@@ -794,6 +816,48 @@ test("catalogue HTML uses the v2 payment flow and bundled Freighter client", () 
   assert.doesNotMatch(html, /reasoning_effort&quot;: &quot;minimal&quot;/);
   assert.doesNotMatch(html, /Hello, world!/);
   assert.doesNotMatch(html, /A beautiful sunset over the ocean/);
+});
+
+test("service pages render testnet CLI examples with testnet route prefixes", async () => {
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL ?? "http://127.0.0.1:3000";
+  const catalog = context.buildPlatformCatalog() as PlatformCatalogForTest;
+  const testnetEndpoints = catalog.publishedEndpoints.filter(
+    (endpoint) => endpoint.network === "testnet",
+  );
+
+  assert.ok(testnetEndpoints.length > 0);
+
+  for (const endpoint of testnetEndpoints) {
+    assert.ok(
+      endpoint.fullPath.startsWith("/testnet/"),
+      `${endpoint.id} should publish a testnet fullPath`,
+    );
+    assert.ok(
+      endpoint.requestExample.includes(`${publicBaseUrl}${endpoint.fullPath}`),
+      `${endpoint.id} should use its testnet path in the curl example`,
+    );
+    assert.ok(
+      !endpoint.requestExample.includes(`${publicBaseUrl}${endpoint.route}`),
+      `${endpoint.id} should not keep the mainnet path in its testnet curl example`,
+    );
+  }
+
+  const serviceIds = Array.from(
+    new Set(testnetEndpoints.map((endpoint) => endpoint.serviceId)),
+  );
+
+  for (const serviceId of serviceIds) {
+    const response = await fetch(`${context.appBaseUrl}/services/${serviceId}`);
+    assert.equal(response.status, 200);
+    const html = await response.text();
+
+    for (const endpoint of testnetEndpoints.filter((ep) => ep.serviceId === serviceId)) {
+      assert.ok(
+        html.includes(escapeHtmlForTest(endpoint.requestExample)),
+        `${serviceId} page should render the testnet CLI example for ${endpoint.id}`,
+      );
+    }
+  }
 });
 
 test("public discovery endpoints advertise XLM when enabled for any configured network", async () => {
